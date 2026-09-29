@@ -142,7 +142,9 @@
       "note": "",
       "found_via": "Awwwards",
       "favorite": false,
-      "boards": [],
+      "boards": [
+        "0b404bb4-9b8a-469f-807d-a0a22d8c1f97"
+      ],
       "date_added": "2026-09-20T01:27:01.342Z"
     },
     {
@@ -207,7 +209,9 @@
       "note": "",
       "found_via": "Awwwards",
       "favorite": true,
-      "boards": [],
+      "boards": [
+        "0b404bb4-9b8a-469f-807d-a0a22d8c1f97"
+      ],
       "date_added": "2026-09-20T01:42:04.837Z"
     },
     {
@@ -224,7 +228,9 @@
       "note": "",
       "found_via": "Awwwards",
       "favorite": false,
-      "boards": [],
+      "boards": [
+        "0b404bb4-9b8a-469f-807d-a0a22d8c1f97"
+      ],
       "date_added": "2026-09-20T01:43:03.879Z"
     },
     {
@@ -272,7 +278,9 @@
       "note": "",
       "found_via": "YouTube",
       "favorite": false,
-      "boards": [],
+      "boards": [
+        "0b404bb4-9b8a-469f-807d-a0a22d8c1f97"
+      ],
       "date_added": "2026-09-20T01:48:58.053Z"
     },
     {
@@ -387,6 +395,102 @@
       "favorite": true,
       "boards": [],
       "date_added": "2026-09-20T03:03:43.997Z"
+    },
+    {
+      "id": "787387f4-0b4d-4e74-b476-05ec340c7e4b",
+      "url": "https://www.reddit.com/r/startpages/comments/sti7f9/bento_now_with_custom_layouts/#lightbox",
+      "title": "Bento",
+      "screenshot": "0fc84718-2f5c-437a-b3fc-e7880a3afbd0.png",
+      "type": "Start Page",
+      "color": "White",
+      "style_tags": [
+        "Clean"
+      ],
+      "note": "",
+      "found_via": "Reddit",
+      "favorite": false,
+      "boards": [],
+      "date_added": "2026-09-29T13:36:30.382Z"
+    },
+    {
+      "id": "5c66e5f4-4435-4799-b68e-cb8135413031",
+      "url": "https://www.reddit.com/r/startpages/comments/1jlmmy9/simple_but_effective_startup_i_just_created/",
+      "title": "Dracula",
+      "screenshot": "4a84b0c3-f2aa-438d-9467-91e3f71cbc33.png",
+      "type": "Start Page",
+      "color": "Purple",
+      "style_tags": [
+        "Dark Mode"
+      ],
+      "note": "",
+      "found_via": "Reddit",
+      "favorite": false,
+      "boards": [],
+      "date_added": "2026-09-29T13:37:25.187Z"
+    },
+    {
+      "id": "5b9c4b53-8e40-4f19-bf28-1daf54702936",
+      "url": "https://www.reddit.com/r/startpages/comments/1p8zx2b/untitled_startpage_v3/",
+      "title": "Untitled Startpage v3",
+      "screenshot": "065cc071-bc1f-4858-8325-22f304362b79.png",
+      "type": "Start Page",
+      "color": "Purple",
+      "style_tags": [
+        "Dark Mode"
+      ],
+      "note": "",
+      "found_via": "Reddit",
+      "favorite": false,
+      "boards": [],
+      "date_added": "2026-09-29T13:39:27.915Z"
+    },
+    {
+      "id": "1db11fcb-c949-412f-8782-a4dfa20c717a",
+      "url": "https://www.reddit.com/r/startpages/comments/fxzaw8/my_first_experiment/",
+      "title": "First Experiment",
+      "screenshot": "8f962e4d-0d55-4503-a7ea-bd6dc2fe9bc8.png",
+      "type": "Start Page",
+      "color": "Blue",
+      "style_tags": [
+        "Minimal"
+      ],
+      "note": "",
+      "found_via": "Reddit",
+      "favorite": false,
+      "boards": [],
+      "date_added": "2026-09-29T13:40:10.975Z"
+    },
+    {
+      "id": "5d961e5f-fc18-4ae9-80bd-793e8593fb2e",
+      "url": "https://www.reddit.com/r/startpages/comments/1m8sw1s/restart_a_tuilike_startpage/",
+      "title": "Re-start",
+      "screenshot": "9b21bbf3-7784-4693-840f-3f3ceda05461.png",
+      "type": "Start Page",
+      "color": "Black",
+      "style_tags": [
+        "Typographic"
+      ],
+      "note": "",
+      "found_via": "Reddit",
+      "favorite": false,
+      "boards": [],
+      "date_added": "2026-09-29T13:41:31.584Z"
+    },
+    {
+      "id": "3d0d9c79-103d-45a9-b964-43356bbf32f2",
+      "url": "https://www.reddit.com/r/startpages/comments/hfuoqg/a_simple_startpage_i_have_been_working_on/",
+      "title": "Simple Startpage",
+      "screenshot": "df5bd76e-f571-4e48-9b64-bdc4170da59c.png",
+      "type": "Start Page",
+      "color": "Blue",
+      "style_tags": [
+        "Material"
+      ],
+      "note": "",
+      "found_via": "Reddit",
+      "favorite": false,
+      "boards": [],
+      "date_added": "2026-09-29T13:42:06.428Z"
     }
   ],
   "boards": [
@@ -426,12 +530,14 @@
     "Video Scroll"
   ],
   "types": [
-    "Website"
+    "Website",
+    "Start Page"
   ],
   "foundVia": [
     "Dribbble",
     "Twitter/X",
     "Awwwards",
-    "YouTube"
+    "YouTube",
+    "Reddit"
   ]
 }
