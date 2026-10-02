@@ -12,6 +12,10 @@
 
 <!-- ═══════════════════════════════════════════ SIDEBAR ══ -->
 <aside class="sidebar">
+  <button class="sidebar-toggle" id="sidebar-toggle" title="Collapse sidebar" aria-label="Collapse sidebar">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M9 2L4 7l5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+
   <div class="sidebar-brand">
     <div class="brand-mark">
       <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
@@ -26,28 +30,32 @@
   </div>
 
   <nav class="sidebar-nav">
-    <a class="nav-item active" data-view="browse" href="#">
+    <a class="nav-item active" data-view="browse" href="#" title="Browse">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="1" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
-      Browse
+      <span class="nav-label">Browse</span>
     </a>
-    <a class="nav-item" data-view="boards" href="#">
+    <a class="nav-item" data-view="boards" href="#" title="Boards">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M5 3V1M11 3V1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      Boards
+      <span class="nav-label">Boards</span>
       <span class="nav-badge" id="nav-boards-count"></span>
     </a>
-    <a class="nav-item" data-view="favorites" href="#">
+    <a class="nav-item" data-view="favorites" href="#" title="Favorites">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13.5l-5.5-5a3.18 3.18 0 010-4.5 3.18 3.18 0 014.5 0L8 5l1-1a3.18 3.18 0 014.5 0 3.18 3.18 0 010 4.5L8 13.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
-      Favorites
+      <span class="nav-label">Favorites</span>
       <span class="nav-badge" id="nav-fav-count"></span>
     </a>
     <div class="nav-divider"></div>
-    <a class="nav-item nav-add" data-view="add" href="#">
+    <a class="nav-item nav-add" data-view="add" href="#" title="Add Entry">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v6M5 8h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      Add Entry
+      <span class="nav-label">Add Entry</span>
     </a>
-    <a class="nav-item" data-view="settings" href="#">
+    <a class="nav-item" data-view="settings" href="#" title="Settings">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.3 3.3l1.4 1.4M11.3 11.3l1.4 1.4M3.3 12.7l1.4-1.4M11.3 4.7l1.4-1.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      Settings
+      <span class="nav-label">Settings</span>
+    </a>
+    <a class="nav-item" data-view="shortcuts" href="#" title="Keyboard Shortcuts">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="10" rx="1.5" stroke="currentColor" stroke-width="1.5"/><circle cx="4" cy="6" r=".6" fill="currentColor"/><circle cx="7" cy="6" r=".6" fill="currentColor"/><circle cx="10" cy="6" r=".6" fill="currentColor"/><circle cx="13" cy="6" r=".6" fill="currentColor"/><rect x="4" y="9" width="8" height="1.3" rx=".65" fill="currentColor"/></svg>
+      <span class="nav-label">Shortcuts</span>
     </a>
   </nav>
 
@@ -373,6 +381,44 @@
         <h2 class="settings-heading">Danger Zone</h2>
         <p class="settings-desc">Permanently delete all entries, boards, and tags. This cannot be undone.</p>
         <button class="btn-danger" id="reset-btn">Factory Reset</button>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── SHORTCUTS VIEW ── -->
+  <section class="view" id="view-shortcuts" style="display:none">
+    <header class="view-header">
+      <h1 class="view-title">Keyboard Shortcuts</h1>
+    </header>
+
+    <div class="settings-sections">
+
+      <div class="settings-section">
+        <h2 class="settings-heading">Navigation</h2>
+        <div class="shortcut-group">
+          <div class="settings-row"><span>Go to Browse</span><kbd class="kbd">B</kbd></div>
+          <div class="settings-row"><span>Go to Boards</span><kbd class="kbd">O</kbd></div>
+          <div class="settings-row"><span>Go to Favorites</span><kbd class="kbd">F</kbd></div>
+          <div class="settings-row"><span>Go to Settings</span><kbd class="kbd">S</kbd></div>
+          <div class="settings-row"><span>Show this page</span><kbd class="kbd">?</kbd></div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h2 class="settings-heading">Entries</h2>
+        <div class="shortcut-group">
+          <div class="settings-row"><span>New entry</span><kbd class="kbd">N</kbd></div>
+          <div class="settings-row"><span>Focus search</span><kbd class="kbd">/</kbd></div>
+          <div class="settings-row"><span>Save form / add tag</span><span><kbd class="kbd">Ctrl</kbd> + <kbd class="kbd">Enter</kbd></span></div>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h2 class="settings-heading">General</h2>
+        <div class="shortcut-group">
+          <div class="settings-row"><span>Close dialog / cancel</span><kbd class="kbd">Esc</kbd></div>
+        </div>
       </div>
 
     </div>

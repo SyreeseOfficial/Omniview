@@ -5,6 +5,7 @@
 /* ─── Design Tokens ─────────────────────────────────────────── */
 :root {
   --sidebar-w: 220px;
+  --sidebar-w-collapsed: 64px;
 
   /* Dark theme (default) */
   --bg:          #0f0f10;
@@ -84,7 +85,9 @@ textarea { resize: vertical; }
   position: fixed;
   top: 0; left: 0; bottom: 0;
   z-index: 10;
+  transition: width .22s cubic-bezier(.4,0,.2,1);
 }
+.sidebar.collapsed { width: var(--sidebar-w-collapsed); }
 
 .main {
   margin-left: var(--sidebar-w);
@@ -92,7 +95,27 @@ textarea { resize: vertical; }
   min-height: 100vh;
   padding: 2rem 2.5rem 4rem;
   max-width: 1440px;
+  transition: margin-left .22s cubic-bezier(.4,0,.2,1);
 }
+.sidebar.collapsed ~ .main { margin-left: var(--sidebar-w-collapsed); }
+
+/* ─── Sidebar collapse toggle ───────────────────────────────── */
+.sidebar-toggle {
+  position: absolute;
+  top: 1.5rem;
+  right: -12px;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 11;
+  transition: background .15s, color .15s, transform .22s ease;
+}
+.sidebar-toggle:hover { background: var(--bg-hover); color: var(--text); }
+.sidebar-toggle svg { transition: transform .22s ease; }
+.sidebar.collapsed .sidebar-toggle svg { transform: rotate(180deg); }
 
 /* ─── Sidebar ────────────────────────────────────────────────── */
 .sidebar-brand {
@@ -101,7 +124,9 @@ textarea { resize: vertical; }
   gap: .65rem;
   padding: 1.25rem 1.1rem 1rem;
   border-bottom: 1px solid var(--border);
+  transition: gap .22s ease, justify-content .22s ease;
 }
+.sidebar.collapsed .sidebar-brand { gap: 0; justify-content: center; }
 .brand-mark { color: var(--accent); flex-shrink: 0; }
 .brand-name {
   font-family: var(--font-serif);
@@ -121,7 +146,7 @@ textarea { resize: vertical; }
   color: var(--text-2);
   font-size: .875rem;
   font-weight: 450;
-  transition: background .13s, color .13s;
+  transition: background .13s, color .13s, gap .22s ease, justify-content .22s ease;
   position: relative;
 }
 .nav-item:hover { background: var(--bg-hover); color: var(--text); }
@@ -141,13 +166,40 @@ textarea { resize: vertical; }
 }
 .nav-badge:empty { display: none; }
 
+/* ─── Collapsed state: labels fade/shrink, icons stay centered ── */
+.nav-label, .brand-name, .stats-line {
+  white-space: nowrap;
+  overflow: hidden;
+  max-width: 160px;
+  opacity: 1;
+  transition: opacity .15s ease, max-width .2s ease;
+}
+.nav-badge { transition: opacity .15s ease, max-width .2s ease; }
+.sidebar.collapsed .nav-item { justify-content: center; gap: 0; }
+.sidebar.collapsed .nav-label,
+.sidebar.collapsed .brand-name,
+.sidebar.collapsed .stats-line,
+.sidebar.collapsed .nav-badge {
+  opacity: 0;
+  max-width: 0;
+  pointer-events: none;
+}
+.sidebar.collapsed .nav-badge {
+  min-width: 0;
+  margin-left: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
 .sidebar-footer {
   padding: .85rem 1rem;
   border-top: 1px solid var(--border);
   display: flex;
   align-items: center;
   gap: .6rem;
+  transition: gap .22s ease, justify-content .22s ease;
 }
+.sidebar.collapsed .sidebar-footer { gap: 0; justify-content: center; }
 .theme-toggle {
   width: 30px; height: 30px;
   border-radius: 50%;
@@ -833,6 +885,21 @@ textarea { resize: vertical; }
   letter-spacing: 0;
 }
 .settings-row { display: flex; align-items: center; justify-content: space-between; font-size: .875rem; }
+.shortcut-group { display: flex; flex-direction: column; gap: .75rem; }
+.kbd {
+  display: inline-block;
+  min-width: 1.6rem;
+  text-align: center;
+  padding: .2rem .5rem;
+  font-family: var(--font);
+  font-size: .75rem;
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--bg-3);
+  border: 1px solid var(--border-2);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-xs);
+}
 .settings-desc { font-size: .82rem; color: var(--text-2); margin-bottom: 1rem; }
 .settings-row-actions { display: flex; gap: .6rem; flex-wrap: wrap; }
 .settings-danger-zone { border-color: rgba(248,113,113,.2); }

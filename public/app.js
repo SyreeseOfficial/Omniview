@@ -57,6 +57,8 @@ async function init() {
   ['f-found-via', 'detail-found-via'].forEach(id => initCombo(id, 'foundVia'));
   setupNav();
   setupTheme();
+  setupSidebarCollapse();
+  setupKeyboardShortcuts();
   setupSearch();
   setupFilters();
   setupLayoutSwitch();
@@ -374,6 +376,63 @@ function setTheme(t) {
   document.documentElement.dataset.theme = t;
   localStorage.setItem('omniview-theme', t);
   document.querySelectorAll('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.t === t));
+}
+
+// ═══════════════════════════════════════════ SIDEBAR COLLAPSE ══
+function setupSidebarCollapse() {
+  const sidebar = document.querySelector('.sidebar');
+  const btn = document.getElementById('sidebar-toggle');
+  setSidebarCollapsed(localStorage.getItem('omniview-sidebar-collapsed') === '1');
+  btn.addEventListener('click', () => setSidebarCollapsed(!sidebar.classList.contains('collapsed')));
+}
+
+function setSidebarCollapsed(collapsed) {
+  const btn = document.getElementById('sidebar-toggle');
+  document.querySelector('.sidebar').classList.toggle('collapsed', collapsed);
+  localStorage.setItem('omniview-sidebar-collapsed', collapsed ? '1' : '0');
+  const label = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+  btn.title = label;
+  btn.setAttribute('aria-label', label);
+}
+
+// ═══════════════════════════════════════════ KEYBOARD SHORTCUTS ══
+function isOpen(overlayId) {
+  const el = document.getElementById(overlayId);
+  return el && el.style.display !== 'none';
+}
+
+function setupKeyboardShortcuts() {
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      if (isOpen('detail-overlay')) return closeDetail();
+      if (isOpen('board-picker-overlay')) return closeBoardPicker();
+      if (isOpen('confirm-overlay')) return document.getElementById('confirm-cancel').click();
+      return;
+    }
+
+    // Ctrl/Cmd+Enter saves whatever form or modal you're typing in.
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      const form = e.target.closest('form');
+      if (form) { e.preventDefault(); form.requestSubmit(); return; }
+      if (e.target.closest('#detail-overlay')) { e.preventDefault(); document.getElementById('detail-save').click(); }
+      return;
+    }
+
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const t = e.target;
+    if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable) return;
+    if (isOpen('detail-overlay') || isOpen('board-picker-overlay') || isOpen('confirm-overlay')) return;
+
+    switch (e.key) {
+      case '/': e.preventDefault(); navigate('browse'); document.getElementById('search-input').focus(); break;
+      case 'n': case 'N': navigate('add'); break;
+      case 'b': case 'B': navigate('browse'); break;
+      case 'o': case 'O': navigate('boards'); break;
+      case 'f': case 'F': navigate('favorites'); break;
+      case 's': case 'S': navigate('settings'); break;
+      case '?': navigate('shortcuts'); break;
+    }
+  });
 }
 
 // ═══════════════════════════════════════════ SEARCH ══
