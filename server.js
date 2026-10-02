@@ -11,11 +11,12 @@ const app = express();
 const PORT = process.env.PORT || 3737;
 
 // ─── Paths ───────────────────────────────────────────────────────────────────
-const DB_PATH = path.join(__dirname, 'db', 'library.json');
-const UPLOADS_DIR = path.join(__dirname, 'uploads');
+// Overridable so tests can point at a throwaway directory instead of the real library.
+const DB_PATH = process.env.OMNIVIEW_DB_PATH || path.join(__dirname, 'db', 'library.json');
+const UPLOADS_DIR = process.env.OMNIVIEW_UPLOADS_DIR || path.join(__dirname, 'uploads');
 
 // Ensure dirs exist
-[path.join(__dirname, 'db'), UPLOADS_DIR].forEach(d => fs.mkdirSync(d, { recursive: true }));
+[path.dirname(DB_PATH), UPLOADS_DIR].forEach(d => fs.mkdirSync(d, { recursive: true }));
 
 // ─── JSON "Database" ─────────────────────────────────────────────────────────
 const DEFAULT_DB = {
@@ -32,35 +33,70 @@ const DEFAULT_DB = {
   foundVia: ['Dribbble', 'Google', 'Instagram', 'Newsletter', 'Pinterest', 'Referral', 'Twitter/X']
 };
 
-function readDB() {
-  let data;
+// Loaded once at startup and kept live in memory. Every route mutates and
+// reads this same object, so there's no per-request disk read (cheap) and no
+// race between two requests reading stale state off disk (the thing the old
+// read-mutate-write-per-request version was vulnerable to).
+let cache = null;
+
+function loadDB() {
   try {
-    data = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
+    cache = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
   } catch {
-    return JSON.parse(JSON.stringify(DEFAULT_DB));
+    cache = JSON.parse(JSON.stringify(DEFAULT_DB));
   }
   // Back-fill fields added after this file was first written
-  if (!data.types) data.types = [...DEFAULT_DB.types];
-  if (!data.foundVia) data.foundVia = [...DEFAULT_DB.foundVia];
-  return data;
+  if (!cache.types) cache.types = [...DEFAULT_DB.types];
+  if (!cache.foundVia) cache.foundVia = [...DEFAULT_DB.foundVia];
+}
+
+function readDB() {
+  return cache;
 }
 
 function writeDB(data) {
-  fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
+  cache = data;
+  const json = JSON.stringify(data, null, 2);
+  // Keep a rolling backup of the last-known-good file before overwriting it.
+  if (fs.existsSync(DB_PATH)) fs.copyFileSync(DB_PATH, `${DB_PATH}.bak`);
+  // Write to a temp file and rename over the original so a crash mid-write
+  // can never leave library.json truncated.
+  const tmpPath = `${DB_PATH}.tmp`;
+  fs.writeFileSync(tmpPath, json);
+  fs.renameSync(tmpPath, DB_PATH);
+  console.log(`[${new Date().toISOString()}] library.json written (${data.entries.length} entries, ${data.boards.length} boards)`);
 }
 
+loadDB();
+
 // ─── Multer (screenshot uploads) ─────────────────────────────────────────────
+// Extension is picked from the allowlisted mimetype, never the client-supplied
+// filename — an .svg can carry a <script> and gets served same-origin from
+// /uploads, so letting the client dictate the extension is a stored-XSS vector.
+const ALLOWED_IMAGE_TYPES = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' };
+
 const storage = multer.diskStorage({
   destination: UPLOADS_DIR,
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname) || '.png';
-    cb(null, `${uuidv4()}${ext}`);
+  filename: (req, file, cb) => cb(null, `${uuidv4()}${ALLOWED_IMAGE_TYPES[file.mimetype]}`)
+});
+const upload = multer({
+  storage,
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!ALLOWED_IMAGE_TYPES[file.mimetype]) return cb(new Error('UNSUPPORTED_FILE_TYPE'));
+    cb(null, true);
   }
 });
-const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 app.use(express.json());
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now() - start}ms`);
+  });
+  next();
+});
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(UPLOADS_DIR));
 
@@ -75,6 +111,7 @@ app.get('/api/entries', (req, res) => {
   if (q) {
     const lower = q.toLowerCase();
     entries = entries.filter(e =>
+      (e.title || '').toLowerCase().includes(lower) ||
       e.url.toLowerCase().includes(lower) ||
       (e.note || '').toLowerCase().includes(lower) ||
       (e.style_tags || []).some(t => t.toLowerCase().includes(lower))
@@ -145,6 +182,12 @@ app.put('/api/entries/:id', (req, res) => {
   const db = readDB();
   const idx = db.entries.findIndex(e => e.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Not found' });
+
+  if (req.body.removeScreenshot && db.entries[idx].screenshot) {
+    const p = path.join(UPLOADS_DIR, db.entries[idx].screenshot);
+    if (fs.existsSync(p)) fs.unlinkSync(p);
+    db.entries[idx].screenshot = null;
+  }
 
   const allowed = ['url', 'title', 'type', 'color', 'style_tags', 'note', 'found_via', 'favorite', 'boards'];
   allowed.forEach(k => {
@@ -230,7 +273,7 @@ app.get('/api/boards', (req, res) => {
 });
 
 app.post('/api/boards', (req, res) => {
-  const { name } = req.body;
+  const name = (req.body.name || '').trim();
   if (!name) return res.status(400).json({ error: 'name required' });
   const db = readDB();
   const board = { id: uuidv4(), name, created: new Date().toISOString() };
@@ -243,7 +286,8 @@ app.put('/api/boards/:id', (req, res) => {
   const db = readDB();
   const idx = db.boards.findIndex(b => b.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Not found' });
-  if (req.body.name) db.boards[idx].name = req.body.name;
+  const name = (req.body.name || '').trim();
+  if (name) db.boards[idx].name = name;
   writeDB(db);
   res.json(db.boards[idx]);
 });
@@ -261,35 +305,42 @@ app.delete('/api/boards/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// Shared by tags/types/found-via create + rename: trims, rejects blank, and
+// rejects a case-insensitive collision with an existing option. `self` is the
+// option's own current name (excluded from the collision check) when renaming.
+function validateOptionName(name, list, self) {
+  const trimmed = (name || '').trim();
+  if (!trimmed) return { error: 'name required', status: 400 };
+  const dupe = list.some(o => o.toLowerCase() === trimmed.toLowerCase() && o !== self);
+  if (dupe) return { error: 'That name already exists', status: 409 };
+  return { value: trimmed };
+}
+
 // ─── Tags ─────────────────────────────────────────────────────────────────────
 app.get('/api/tags', (req, res) => {
   res.json(readDB().tags);
 });
 
 app.post('/api/tags', (req, res) => {
-  const { name } = req.body;
-  if (!name) return res.status(400).json({ error: 'name required' });
   const db = readDB();
-  const normalized = name.trim();
-  if (db.tags.map(t => t.toLowerCase()).includes(normalized.toLowerCase())) {
-    return res.status(409).json({ error: 'Tag already exists' });
-  }
-  db.tags.push(normalized);
+  const v = validateOptionName(req.body.name, db.tags);
+  if (v.error) return res.status(v.status).json({ error: v.error });
+  db.tags.push(v.value);
   writeDB(db);
   res.status(201).json({ tags: db.tags });
 });
 
 app.put('/api/tags/:name', (req, res) => {
-  const { newName } = req.body;
-  if (!newName) return res.status(400).json({ error: 'newName required' });
   const db = readDB();
   const oldName = decodeURIComponent(req.params.name);
   const idx = db.tags.findIndex(t => t === oldName);
   if (idx === -1) return res.status(404).json({ error: 'Tag not found' });
-  db.tags[idx] = newName.trim();
+  const v = validateOptionName(req.body.newName, db.tags, oldName);
+  if (v.error) return res.status(v.status).json({ error: v.error });
+  db.tags[idx] = v.value;
   // Update in all entries
   db.entries.forEach(e => {
-    e.style_tags = (e.style_tags || []).map(t => t === oldName ? newName.trim() : t);
+    e.style_tags = (e.style_tags || []).map(t => t === oldName ? v.value : t);
   });
   writeDB(db);
   res.json({ tags: db.tags });
@@ -313,27 +364,23 @@ app.get('/api/types', (req, res) => {
 });
 
 app.post('/api/types', (req, res) => {
-  const { name } = req.body;
-  if (!name) return res.status(400).json({ error: 'name required' });
   const db = readDB();
-  const normalized = name.trim();
-  if (db.types.map(t => t.toLowerCase()).includes(normalized.toLowerCase())) {
-    return res.status(409).json({ error: 'Type already exists' });
-  }
-  db.types.push(normalized);
+  const v = validateOptionName(req.body.name, db.types);
+  if (v.error) return res.status(v.status).json({ error: v.error });
+  db.types.push(v.value);
   writeDB(db);
   res.status(201).json({ types: db.types });
 });
 
 app.put('/api/types/:name', (req, res) => {
-  const { newName } = req.body;
-  if (!newName) return res.status(400).json({ error: 'newName required' });
   const db = readDB();
   const oldName = decodeURIComponent(req.params.name);
   const idx = db.types.findIndex(t => t === oldName);
   if (idx === -1) return res.status(404).json({ error: 'Type not found' });
-  db.types[idx] = newName.trim();
-  db.entries.forEach(e => { if (e.type === oldName) e.type = newName.trim(); });
+  const v = validateOptionName(req.body.newName, db.types, oldName);
+  if (v.error) return res.status(v.status).json({ error: v.error });
+  db.types[idx] = v.value;
+  db.entries.forEach(e => { if (e.type === oldName) e.type = v.value; });
   writeDB(db);
   res.json({ types: db.types });
 });
@@ -354,27 +401,23 @@ app.get('/api/found-via', (req, res) => {
 });
 
 app.post('/api/found-via', (req, res) => {
-  const { name } = req.body;
-  if (!name) return res.status(400).json({ error: 'name required' });
   const db = readDB();
-  const normalized = name.trim();
-  if (db.foundVia.map(t => t.toLowerCase()).includes(normalized.toLowerCase())) {
-    return res.status(409).json({ error: 'Found via option already exists' });
-  }
-  db.foundVia.push(normalized);
+  const v = validateOptionName(req.body.name, db.foundVia);
+  if (v.error) return res.status(v.status).json({ error: v.error });
+  db.foundVia.push(v.value);
   writeDB(db);
   res.status(201).json({ foundVia: db.foundVia });
 });
 
 app.put('/api/found-via/:name', (req, res) => {
-  const { newName } = req.body;
-  if (!newName) return res.status(400).json({ error: 'newName required' });
   const db = readDB();
   const oldName = decodeURIComponent(req.params.name);
   const idx = db.foundVia.findIndex(t => t === oldName);
   if (idx === -1) return res.status(404).json({ error: 'Found via option not found' });
-  db.foundVia[idx] = newName.trim();
-  db.entries.forEach(e => { if (e.found_via === oldName) e.found_via = newName.trim(); });
+  const v = validateOptionName(req.body.newName, db.foundVia, oldName);
+  if (v.error) return res.status(v.status).json({ error: v.error });
+  db.foundVia[idx] = v.value;
+  db.entries.forEach(e => { if (e.found_via === oldName) e.found_via = v.value; });
   writeDB(db);
   res.json({ foundVia: db.foundVia });
 });
@@ -440,7 +483,29 @@ app.get('/api/stats', (req, res) => {
   });
 });
 
-// ─── Start ────────────────────────────────────────────────────────────────────
-app.listen(PORT, '127.0.0.1', () => {
-  console.log(`\n🎨 Omniview running at http://localhost:${PORT}\n`);
+// ─── Error handling ───────────────────────────────────────────────────────────
+// Catches both thrown errors from route handlers (Express 4 routes these here
+// automatically) and multer's fileFilter/limits errors, so a bad request gets
+// a clean JSON response instead of Express's default HTML stack trace.
+app.use((err, req, res, next) => {
+  console.error(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} error:`, err);
+  if (err.message === 'UNSUPPORTED_FILE_TYPE') {
+    return res.status(400).json({ error: 'Only PNG, JPEG, WEBP, or GIF images are allowed' });
+  }
+  if (err instanceof multer.MulterError) {
+    return res.status(400).json({ error: err.message });
+  }
+  res.status(500).json({ error: 'Internal server error' });
 });
+
+process.on('uncaughtException', err => console.error('Uncaught exception:', err));
+process.on('unhandledRejection', err => console.error('Unhandled rejection:', err));
+
+// ─── Start ────────────────────────────────────────────────────────────────────
+module.exports = app;
+
+if (require.main === module) {
+  app.listen(PORT, '127.0.0.1', () => {
+    console.log(`\n🎨 Omniview running at http://localhost:${PORT}\n`);
+  });
+}

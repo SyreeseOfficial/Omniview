@@ -1127,6 +1127,7 @@ function openAddForm(entry) {
   document.getElementById('form-submit').textContent = entry ? 'Save Changes' : 'Save Entry';
   state.editingEntry = entry;
   state.pendingScreenshotFile = null;
+  if (entry) entry._removeScreenshot = false;
 
   // Reset form
   document.getElementById('f-title').value = entry ? (entry.title || '') : '';
@@ -1238,6 +1239,7 @@ function setupAddForm() {
       style_tags: formSelectedTags,
       boards: [...formSelectedBoards]
     };
+    if (state.editingEntry && state.editingEntry._removeScreenshot) payload.removeScreenshot = true;
 
     let entry;
     if (state.editingEntry) {
@@ -1267,6 +1269,7 @@ function setupAddForm() {
 
 function setScreenshotPreview(file) {
   state.pendingScreenshotFile = file;
+  if (state.editingEntry) state.editingEntry._removeScreenshot = false;
   const url = URL.createObjectURL(file);
   document.getElementById('drop-zone-inner').style.display = 'none';
   const preview = document.getElementById('drop-preview');
