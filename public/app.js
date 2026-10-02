@@ -10,6 +10,7 @@ const state = {
   types: [],
   foundVia: [],
   filters: { q: '', type: '', tags: [], board: '', favorite: false, tagMode: 'any' },
+  sort: 'newest',
   bulkMode: false,
   selectedIds: new Set(),
   editingEntry: null,
@@ -98,6 +99,7 @@ async function loadAll() {
     api.get('/api/types'),
     api.get('/api/found-via')
   ]);
+  document.getElementById('browse-loading').style.display = 'none';
 }
 
 // ═══════════════════════════════════════════ COMBO DROPDOWNS (Type / Color / Found via) ══
@@ -555,6 +557,42 @@ function renderBoardFilters() {
   );
 }
 
+// ─── Sort ──────────────────────────────────────────────────────
+const SORT_OPTIONS = [
+  { value: 'newest', label: 'Newest' },
+  { value: 'oldest', label: 'Oldest' },
+  { value: 'az', label: 'A–Z' },
+  { value: 'type', label: 'By Type' }
+];
+
+function sortEntries(entries) {
+  const list = [...entries];
+  const byNewest = (a, b) => new Date(b.date_added) - new Date(a.date_added);
+  const titleOf = e => e.title || cleanUrl(e.url);
+  switch (state.sort) {
+    case 'oldest': return list.sort((a, b) => new Date(a.date_added) - new Date(b.date_added));
+    case 'az': return list.sort((a, b) => titleOf(a).localeCompare(titleOf(b)));
+    case 'type': return list.sort((a, b) => (a.type || '').localeCompare(b.type || '') || byNewest(a, b));
+    default: return list.sort(byNewest);
+  }
+}
+
+function renderSortFilter() {
+  const dd = document.getElementById('filter-sort-dd');
+  const list = document.getElementById('filter-sort-list');
+  const current = SORT_OPTIONS.find(o => o.value === state.sort) || SORT_OPTIONS[0];
+  document.getElementById('filter-sort-label').textContent = `Sort: ${current.label}`;
+  list.innerHTML = '';
+  SORT_OPTIONS.forEach(o => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'filter-option' + (o.value === state.sort ? ' selected' : '');
+    item.textContent = o.label;
+    item.addEventListener('click', () => { dd.open = false; state.sort = o.value; renderBrowse(); });
+    list.appendChild(item);
+  });
+}
+
 // ═══════════════════════════════════════════ BROWSE ══
 function applyFilters(entries) {
   let list = entries;
@@ -585,11 +623,12 @@ function renderBrowse() {
   renderTypeFilter();
   renderTagFilters();
   renderBoardFilters();
+  renderSortFilter();
   document.getElementById('filter-fav').classList.toggle('active', f.favorite);
   document.getElementById('filter-clear').style.display =
     (f.type || f.tags.length || f.board || f.favorite) ? '' : 'none';
 
-  const filtered = applyFilters(state.entries).sort((a, b) => new Date(b.date_added) - new Date(a.date_added));
+  const filtered = sortEntries(applyFilters(state.entries));
   const grid = document.getElementById('entry-grid');
   const list = document.getElementById('entry-list');
   const gallery = state.layout === 'gallery';
@@ -660,7 +699,15 @@ function createCard(entry, clickOpensDetail) {
     e.stopPropagation();
     await toggleFavorite(entry.id);
   });
-  overlay.appendChild(favBtn);
+  const openBtn = document.createElement('a');
+  openBtn.className = 'card-open';
+  openBtn.href = entry.url;
+  openBtn.target = '_blank';
+  openBtn.rel = 'noopener';
+  openBtn.title = 'Open site';
+  openBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M5 2H2v9h9V8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M7.5 1.5H11.5V5.5M11.5 1.5L6 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  openBtn.addEventListener('click', e => e.stopPropagation());
+  overlay.append(openBtn, favBtn);
   thumb.appendChild(overlay);
 
   // Bulk check
