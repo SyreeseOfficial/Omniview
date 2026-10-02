@@ -72,6 +72,10 @@ async function init() {
   setupPasteImage();
   renderBrowse();
   refreshStats();
+
+  window.addEventListener('beforeunload', e => {
+    if (isFormDirty()) { e.preventDefault(); e.returnValue = ''; }
+  });
 }
 
 // ═══════════════════════════════════════════ PASTE IMAGE ══
@@ -344,6 +348,14 @@ function setupNav() {
 }
 
 function navigate(view) {
+  if (isFormDirty()) {
+    confirm_('Discard unsaved changes to this entry?', () => { formSnapshot = null; doNavigate(view); }, 'Discard');
+    return;
+  }
+  doNavigate(view);
+}
+
+function doNavigate(view) {
   state.view = view;
   // Hide all views
   document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
@@ -600,6 +612,7 @@ function applyFilters(entries) {
   if (f.q) {
     const q = f.q.toLowerCase();
     list = list.filter(e =>
+      (e.title || '').toLowerCase().includes(q) ||
       e.url.toLowerCase().includes(q) ||
       (e.note || '').toLowerCase().includes(q) ||
       (e.style_tags || []).some(t => t.toLowerCase().includes(q))
@@ -1085,6 +1098,29 @@ document.getElementById('new-board-btn').addEventListener('click', async () => {
 // ═══════════════════════════════════════════ ADD / EDIT FORM ══
 let formSelectedTags = [];
 let formSelectedBoards = new Set();
+let formSnapshot = null;
+
+// Captured right after the form is populated; compared against on every
+// navigation attempt so edits aren't discarded without a prompt.
+function captureFormSnapshot() {
+  return JSON.stringify({
+    title: document.getElementById('f-title').value,
+    url: document.getElementById('f-url').value,
+    type: comboValue('f-type'),
+    color: comboValue('f-color'),
+    foundVia: comboValue('f-found-via'),
+    note: document.getElementById('f-note').value,
+    favorite: document.getElementById('f-favorite').checked,
+    tags: [...formSelectedTags],
+    boards: [...formSelectedBoards],
+    pendingScreenshot: !!state.pendingScreenshotFile,
+    removeScreenshot: !!(state.editingEntry && state.editingEntry._removeScreenshot)
+  });
+}
+
+function isFormDirty() {
+  return state.view === 'add' && formSnapshot !== null && captureFormSnapshot() !== formSnapshot;
+}
 
 function openAddForm(entry) {
   document.getElementById('add-view-title').textContent = entry ? 'Edit Entry' : 'Add Entry';
@@ -1112,6 +1148,8 @@ function openAddForm(entry) {
   renderFormTagPills();
   updateFormBoardChips();
   updateDropZoneForEdit(entry);
+
+  formSnapshot = captureFormSnapshot();
 }
 
 function updateDropZoneForEdit(entry) {
@@ -1178,6 +1216,7 @@ function setupAddForm() {
 
   // Cancel
   document.getElementById('form-cancel').addEventListener('click', () => {
+    formSnapshot = null;
     history.back();
     if (state.view === 'add') navigate('browse');
   });
@@ -1220,6 +1259,7 @@ function setupAddForm() {
 
     state.editingEntry = null;
     state.pendingScreenshotFile = null;
+    formSnapshot = null;
     navigate('browse');
     refreshStats();
   });
@@ -1511,8 +1551,9 @@ function setupConfirmModal() {
   });
 }
 
-function confirm_(msg, cb) {
+function confirm_(msg, cb, okLabel = 'Delete') {
   document.getElementById('confirm-body').textContent = msg;
+  document.getElementById('confirm-ok').textContent = okLabel;
   document.getElementById('confirm-overlay').style.display = '';
   confirmCallback = cb;
 }
