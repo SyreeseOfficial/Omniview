@@ -52,6 +52,7 @@ const api = {
 
 // ═══════════════════════════════════════════ INIT ══
 async function init() {
+  loadPersistedFilters();
   await loadAll();
   ['f-type', 'detail-type'].forEach(id => initCombo(id, 'type'));
   ['f-color', 'detail-color'].forEach(id => initCombo(id, 'color'));
@@ -418,9 +419,11 @@ function isOpen(overlayId) {
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
+      // Confirm can stack on top of the detail modal (e.g. delete-entry), so
+      // it must be checked first — otherwise Escape closes the modal underneath.
+      if (isOpen('confirm-overlay')) return document.getElementById('confirm-cancel').click();
       if (isOpen('detail-overlay')) return closeDetail();
       if (isOpen('board-picker-overlay')) return closeBoardPicker();
-      if (isOpen('confirm-overlay')) return document.getElementById('confirm-cancel').click();
       return;
     }
 
@@ -453,6 +456,8 @@ function setupKeyboardShortcuts() {
 function setupSearch() {
   const input = document.getElementById('search-input');
   const clear = document.getElementById('search-clear');
+  input.value = state.filters.q;
+  clear.style.display = state.filters.q ? '' : 'none';
   input.addEventListener('input', () => {
     state.filters.q = input.value.trim();
     clear.style.display = state.filters.q ? '' : 'none';
@@ -467,6 +472,22 @@ function setupSearch() {
 }
 
 // ═══════════════════════════════════════════ FILTERS ══
+// Search text, tag/type/board filters, favorite toggle, and sort order all
+// persist across reloads, the same way theme and layout already do.
+const FILTERS_KEY = 'omniview-filters';
+
+function loadPersistedFilters() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(FILTERS_KEY));
+    if (saved && saved.filters) Object.assign(state.filters, saved.filters);
+    if (saved && saved.sort) state.sort = saved.sort;
+  } catch { /* ignore malformed/missing storage */ }
+}
+
+function persistFilters() {
+  localStorage.setItem(FILTERS_KEY, JSON.stringify({ filters: state.filters, sort: state.sort }));
+}
+
 function setupFilters() {
   document.getElementById('filter-fav').addEventListener('click', () => {
     state.filters.favorite = !state.filters.favorite;
@@ -653,6 +674,7 @@ function renderBrowse() {
   list.style.display = !gallery && filtered.length ? '' : 'none';
   document.getElementById('browse-empty').style.display = filtered.length === 0 ? '' : 'none';
   refreshStats();
+  persistFilters();
 }
 
 // ═══════════════════════════════════════════ LAYOUT SWITCH ══
@@ -895,11 +917,54 @@ function setupBulk() {
 
   document.getElementById('bulk-delete').addEventListener('click', () => {
     if (state.selectedIds.size === 0) return;
-    confirm_(`Delete ${state.selectedIds.size} selected entries? This cannot be undone.`, async () => {
-      await api.post('/api/entries/bulk', { ids: [...state.selectedIds], action: 'delete' });
-      state.entries = await api.get('/api/entries');
+    const ids = [...state.selectedIds];
+    confirm_(`Delete ${ids.length} selected entries?`, () => {
       setBulkMode(false);
+      deleteEntriesWithUndo(ids);
     });
+  });
+}
+
+// Removes entries from view immediately and shows an "Undo" toast; the actual
+// server delete (which also removes the screenshot file) only fires once the
+// toast's 5s window elapses without Undo being clicked.
+function deleteEntriesWithUndo(ids) {
+  const removed = ids
+    .map(id => ({ id, idx: state.entries.findIndex(e => e.id === id) }))
+    .filter(r => r.idx !== -1)
+    .map(r => ({ ...r, entry: state.entries[r.idx] }));
+  if (removed.length === 0) return;
+
+  [...removed].sort((a, b) => b.idx - a.idx).forEach(r => state.entries.splice(r.idx, 1));
+  renderBrowse();
+  if (state.view === 'favorites') renderFavorites();
+  refreshStats();
+
+  let undone = false;
+  const timer = setTimeout(async () => {
+    if (undone) return;
+    try {
+      await api.post('/api/entries/bulk', { ids, action: 'delete' });
+    } catch {
+      toastError('Failed to delete. Reloading entries.');
+      state.entries = await api.get('/api/entries');
+      renderBrowse();
+      if (state.view === 'favorites') renderFavorites();
+      refreshStats();
+    }
+  }, 5000);
+
+  showToast(removed.length === 1 ? 'Entry deleted.' : `${removed.length} entries deleted.`, {
+    duration: 5000,
+    actionLabel: 'Undo',
+    onAction: () => {
+      undone = true;
+      clearTimeout(timer);
+      [...removed].sort((a, b) => a.idx - b.idx).forEach(r => state.entries.splice(r.idx, 0, r.entry));
+      renderBrowse();
+      if (state.view === 'favorites') renderFavorites();
+      refreshStats();
+    }
   });
 }
 
@@ -955,16 +1020,44 @@ function renderBoards() {
   empty.style.display = 'none';
 
   state.boards.forEach(board => {
-    const count = state.entries.filter(e => (e.boards || []).includes(board.id)).length;
+    const entries = state.entries.filter(e => (e.boards || []).includes(board.id));
     const card = document.createElement('div');
     card.className = 'board-card';
-    card.innerHTML = `<div class="board-name">${escHtml(board.name)}</div><div class="board-count">${count} entr${count === 1 ? 'y' : 'ies'}</div>`;
+    card.appendChild(boardThumbCollage(entries));
+    const meta = document.createElement('div');
+    meta.className = 'board-card-meta';
+    meta.innerHTML = `<div class="board-name">${escHtml(board.name)}</div><div class="board-count">${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}</div>`;
+    card.appendChild(meta);
     card.addEventListener('click', () => openBoard(board));
     grid.appendChild(card);
   });
 
   // Update nav badge
   document.getElementById('nav-boards-count').textContent = state.boards.length || '';
+}
+
+// A 2x2 collage of up to 4 of the board's entry screenshots, so boards are
+// recognizable at a glance instead of only by name.
+function boardThumbCollage(entries) {
+  const wrap = document.createElement('div');
+  wrap.className = 'board-thumb-collage';
+  for (let i = 0; i < 4; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'board-thumb-cell';
+    const entry = entries[i];
+    if (entry && entry.screenshot) {
+      const img = document.createElement('img');
+      img.src = `/uploads/${entry.screenshot}`;
+      img.alt = '';
+      img.loading = 'lazy';
+      cell.appendChild(img);
+    } else {
+      cell.classList.add('empty');
+      cell.innerHTML = PLACEHOLDER_SVG;
+    }
+    wrap.appendChild(cell);
+  }
+  return wrap;
 }
 
 function openBoard(board) {
@@ -1073,11 +1166,11 @@ function openBoardPicker(board) {
     });
   }
 
-  document.getElementById('board-picker-overlay').style.display = '';
+  openModalOverlay('board-picker-overlay');
 }
 
 function closeBoardPicker() {
-  document.getElementById('board-picker-overlay').style.display = 'none';
+  closeModalOverlay('board-picker-overlay');
 }
 
 document.getElementById('board-back').addEventListener('click', () => {
@@ -1259,11 +1352,13 @@ function setupAddForm() {
       if (idx !== -1) state.entries[idx].screenshot = screenshot;
     }
 
+    const wasEdit = !!state.editingEntry;
     state.editingEntry = null;
     state.pendingScreenshotFile = null;
     formSnapshot = null;
     navigate('browse');
     refreshStats();
+    toastSuccess(wasEdit ? 'Entry updated.' : 'Entry added.');
   });
 }
 
@@ -1456,16 +1551,15 @@ function setupDetailModal() {
     state.detailEntry = updated;
     closeDetail();
     renderBrowse();
+    toastSuccess('Entry updated.');
   });
 
   document.getElementById('detail-delete').addEventListener('click', () => {
     if (!state.detailEntry) return;
-    confirm_(`Delete this entry? This cannot be undone.`, async () => {
-      await api.del(`/api/entries/${state.detailEntry.id}`);
-      state.entries = state.entries.filter(e => e.id !== state.detailEntry.id);
+    const entry = state.detailEntry;
+    confirm_(`Delete this entry?`, () => {
       closeDetail();
-      renderBrowse();
-      refreshStats();
+      deleteEntriesWithUndo([entry.id]);
     });
   });
 }
@@ -1501,12 +1595,12 @@ async function openDetail(id) {
   renderDetailTagPills();
   renderDetailBoardChips();
 
-  document.getElementById('detail-overlay').style.display = '';
+  openModalOverlay('detail-overlay');
   document.body.style.overflow = 'hidden';
 }
 
 function closeDetail() {
-  document.getElementById('detail-overlay').style.display = 'none';
+  closeModalOverlay('detail-overlay');
   document.body.style.overflow = '';
   state.detailEntry = null;
 }
@@ -1545,11 +1639,11 @@ let confirmCallback = null;
 
 function setupConfirmModal() {
   document.getElementById('confirm-cancel').addEventListener('click', () => {
-    document.getElementById('confirm-overlay').style.display = 'none';
+    closeModalOverlay('confirm-overlay');
     confirmCallback = null;
   });
   document.getElementById('confirm-ok').addEventListener('click', () => {
-    document.getElementById('confirm-overlay').style.display = 'none';
+    closeModalOverlay('confirm-overlay');
     if (confirmCallback) { confirmCallback(); confirmCallback = null; }
   });
 }
@@ -1557,8 +1651,90 @@ function setupConfirmModal() {
 function confirm_(msg, cb, okLabel = 'Delete') {
   document.getElementById('confirm-body').textContent = msg;
   document.getElementById('confirm-ok').textContent = okLabel;
-  document.getElementById('confirm-overlay').style.display = '';
+  openModalOverlay('confirm-overlay');
   confirmCallback = cb;
+}
+
+// ═══════════════════════════════════════════ TOAST ══
+function showToast(message, opts = {}) {
+  const { type = 'info', duration = 3500, actionLabel, onAction } = opts;
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+
+  const msg = document.createElement('span');
+  msg.className = 'toast-msg';
+  msg.textContent = message;
+  toast.appendChild(msg);
+
+  const dismiss = () => {
+    clearTimeout(timer);
+    toast.classList.add('toast-out');
+    setTimeout(() => toast.remove(), 160);
+  };
+
+  if (actionLabel) {
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.className = 'toast-action';
+    action.textContent = actionLabel;
+    action.addEventListener('click', () => { onAction && onAction(); dismiss(); });
+    toast.appendChild(action);
+  }
+
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'toast-close';
+  close.setAttribute('aria-label', 'Dismiss');
+  close.textContent = '✕';
+  close.addEventListener('click', dismiss);
+  toast.appendChild(close);
+
+  container.appendChild(toast);
+  const timer = setTimeout(dismiss, duration);
+}
+
+function toastSuccess(message) { showToast(message, { type: 'success' }); }
+function toastError(message) { showToast(message, { type: 'error', duration: 5000 }); }
+
+// ═══════════════════════════════════════════ MODAL A11Y (focus trap + return) ══
+// Tracks nested overlays (e.g. the confirm modal opening on top of the detail
+// modal) so closing the inner one restores focus to the outer one, not the page.
+const modalStack = [];
+
+function focusableIn(container) {
+  return [...container.querySelectorAll('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+    .filter(el => !el.disabled && el.offsetParent !== null);
+}
+
+function openModalOverlay(overlayId) {
+  const overlay = document.getElementById(overlayId);
+  const returnFocusEl = document.activeElement;
+  overlay.style.display = '';
+  const modal = overlay.querySelector('.modal');
+  const focusable = focusableIn(modal);
+  (focusable[0] || modal).focus();
+
+  const keydownHandler = e => {
+    if (e.key !== 'Tab') return;
+    const items = focusableIn(modal);
+    if (!items.length) return;
+    const first = items[0], last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  };
+  overlay.addEventListener('keydown', keydownHandler);
+  modalStack.push({ overlayId, overlay, keydownHandler, returnFocusEl });
+}
+
+function closeModalOverlay(overlayId) {
+  const i = modalStack.findIndex(m => m.overlayId === overlayId);
+  if (i === -1) return;
+  const [m] = modalStack.splice(i, 1);
+  m.overlay.style.display = 'none';
+  m.overlay.removeEventListener('keydown', m.keydownHandler);
+  if (m.returnFocusEl && m.returnFocusEl.isConnected) m.returnFocusEl.focus();
 }
 
 // ═══════════════════════════════════════════ SETTINGS ══
@@ -1573,7 +1749,7 @@ function setupSettings() {
       input.value = '';
       renderTagList();
       renderTagFilters();
-    } catch { alert('Tag already exists.'); }
+    } catch { toastError('Tag already exists.'); }
   });
   document.getElementById('new-tag-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('add-tag-btn').click();
@@ -1615,7 +1791,7 @@ function setupOptionAdder(inputId, buttonId, getOptions, ensureFn, onAdded) {
   const add = async () => {
     const name = input.value.trim();
     if (!name) return;
-    if (getOptions().some(o => o.toLowerCase() === name.toLowerCase())) { alert('That option already exists.'); return; }
+    if (getOptions().some(o => o.toLowerCase() === name.toLowerCase())) { toastError('That option already exists.'); return; }
     await ensureFn(name);
     input.value = '';
     onAdded();

@@ -639,6 +639,20 @@ textarea { resize: vertical; }
   transition: border-color .15s, box-shadow .15s, transform .12s;
 }
 .board-card:hover { border-color: var(--accent); box-shadow: var(--shadow); transform: translateY(-2px); }
+.board-card { padding: 0; overflow: hidden; }
+.board-thumb-collage {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  aspect-ratio: 16 / 10;
+  background: var(--bg-3);
+  gap: 1px;
+}
+.board-thumb-cell { overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--bg-3); }
+.board-thumb-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.board-thumb-cell.empty { color: var(--text-3); }
+.board-thumb-cell.empty svg { width: 16px; height: 16px; }
+.board-card-meta { padding: 1rem 1.25rem; }
 .board-name { font-weight: 500; font-size: .95rem; margin-bottom: .3rem; }
 .board-count { font-size: .75rem; color: var(--text-3); }
 
@@ -1113,6 +1127,42 @@ textarea { resize: vertical; }
 .confirm-modal h3 { font-size: 1rem; font-weight: 600; margin-bottom: .6rem; }
 .confirm-modal p { font-size: .85rem; color: var(--text-2); margin-bottom: 1.5rem; line-height: 1.5; }
 .confirm-actions { display: flex; gap: .5rem; justify-content: flex-end; }
+
+/* ─── Toast ──────────────────────────────────────────────────── */
+.toast-container {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 400;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  max-width: 360px;
+}
+.toast {
+  background: var(--bg-2);
+  border: 1px solid var(--border-2);
+  border-left: 3px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  padding: .65rem .8rem;
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  font-size: .85rem;
+  color: var(--text);
+  animation: toastIn .18s ease;
+}
+.toast.toast-out { animation: toastOut .16s ease forwards; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes toastOut { to { opacity: 0; transform: translateY(8px); } }
+.toast-msg { flex: 1; }
+.toast-success { border-left-color: var(--success); }
+.toast-error { border-left-color: var(--danger); }
+.toast-action { color: var(--accent); font-weight: 500; white-space: nowrap; }
+.toast-action:hover { text-decoration: underline; }
+.toast-close { color: var(--text-3); font-size: .7rem; line-height: 1; flex-shrink: 0; }
+.toast-close:hover { color: var(--text); }
 
 /* ─── Scrollbar ──────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }

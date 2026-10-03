@@ -439,7 +439,7 @@
 
 <!-- ═══════════════════════════════════════════ DETAIL MODAL ══ -->
 <div class="modal-overlay" id="detail-overlay" style="display:none">
-  <div class="modal detail-modal">
+  <div class="modal detail-modal" role="dialog" aria-modal="true" aria-label="Entry details">
     <button class="modal-close" id="detail-close">✕</button>
     <div class="detail-layout">
       <div class="detail-screenshot-wrap">
@@ -515,8 +515,8 @@
 
 <!-- ═══════════════════════════════════════════ BOARD PICKER MODAL ══ -->
 <div class="modal-overlay" id="board-picker-overlay" style="display:none">
-  <div class="modal board-picker-modal">
-    <h3>Add entries to board</h3>
+  <div class="modal board-picker-modal" role="dialog" aria-modal="true" aria-labelledby="board-picker-title">
+    <h3 id="board-picker-title">Add entries to board</h3>
     <div class="board-picker-grid" id="board-picker-list"></div>
     <div class="confirm-actions">
       <button class="btn-ghost" id="board-picker-cancel">Cancel</button>
@@ -527,7 +527,7 @@
 
 <!-- ═══════════════════════════════════════════ CONFIRM MODAL ══ -->
 <div class="modal-overlay" id="confirm-overlay" style="display:none">
-  <div class="modal confirm-modal">
+  <div class="modal confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
     <h3 id="confirm-title">Confirm</h3>
     <p id="confirm-body"></p>
     <div class="confirm-actions">
@@ -536,6 +536,8 @@
     </div>
   </div>
 </div>
+
+<div class="toast-container" id="toast-container" aria-live="polite" aria-atomic="true"></div>
 
 <script src="app.js"></script>
 </body>
