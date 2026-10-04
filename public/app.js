@@ -13,6 +13,7 @@ const state = {
   sort: 'newest',
   bulkMode: false,
   selectedIds: new Set(),
+  selectAnchorId: null,
   editingEntry: null,
   currentBoard: null,
   pendingScreenshotFile: null,
@@ -68,6 +69,7 @@ async function init() {
   setupAddForm();
   setupDetailModal();
   setupConfirmModal();
+  setupPromptModal();
   setupBoardPicker();
   setupSettings();
   setupPasteImage();
@@ -151,7 +153,9 @@ function initCombo(id, kindName) {
   const field = root.querySelector('.combo-field');
   field.addEventListener('click', () => (isComboOpen(id) ? closeCombo(id) : openCombo(id)));
   field.addEventListener('keydown', e => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openCombo(id); }
+    const dd = root.querySelector('.combo-dropdown');
+    if (isComboOpen(id) && navigateDropdown(e, dd)) return;
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (!isComboOpen(id)) openCombo(id); }
     if (e.key === 'Escape') closeCombo(id);
   });
   document.addEventListener('click', e => { if (!root.contains(e.target)) closeCombo(id); });
@@ -170,6 +174,34 @@ function setCombo(id, value) {
   if (isComboOpen(id)) renderComboList(id);
 }
 
+// Up/Down moves the keyboard-highlighted row (".focused"), Enter activates it
+// — shared by the Type/Color/Found-via combos and the Style Tags dropdown,
+// whose option rows are otherwise mouse-only.
+function navigateDropdown(e, dropdown) {
+  if (dropdown.style.display === 'none') return false;
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Enter') return false;
+
+  const items = [...dropdown.children];
+  if (!items.length) return false;
+  const current = items.findIndex(el => el.classList.contains('focused'));
+
+  if (e.key === 'Enter') {
+    if (current === -1) return false;
+    e.preventDefault();
+    if (items[current]._activate) items[current]._activate();
+    return true;
+  }
+
+  e.preventDefault();
+  const next = e.key === 'ArrowDown'
+    ? (current + 1) % items.length
+    : (current - 1 + items.length) % items.length;
+  items.forEach(el => el.classList.remove('focused'));
+  items[next].classList.add('focused');
+  items[next].scrollIntoView({ block: 'nearest' });
+  return true;
+}
+
 function isComboOpen(id) { return combos[id].root.querySelector('.combo-dropdown').style.display !== 'none'; }
 function openCombo(id) { combos[id].root.querySelector('.combo-dropdown').style.display = ''; renderComboList(id); }
 function closeCombo(id) { combos[id].root.querySelector('.combo-dropdown').style.display = 'none'; }
@@ -178,25 +210,31 @@ function renderComboList(id) {
   const c = combos[id];
   const dd = c.root.querySelector('.combo-dropdown');
   dd.innerHTML = '';
+  dd.setAttribute('role', 'listbox');
 
   if (c.kind.add) {
     const addNew = document.createElement('div');
     addNew.className = 'tag-dropdown-item create';
+    addNew.setAttribute('role', 'option');
     addNew.textContent = '+ Add New';
-    addNew.addEventListener('click', async () => {
-      const name = (prompt(c.kind.promptLabel) || '').trim();
+    addNew._activate = () => {
       closeCombo(id);
-      if (!name) return;
-      await c.kind.add(name);
-      setCombo(id, name);
-    });
+      prompt_(c.kind.promptLabel, '', async name => {
+        if (!name) return;
+        await c.kind.add(name);
+        setCombo(id, name);
+      });
+    };
+    addNew.addEventListener('click', addNew._activate);
     dd.appendChild(addNew);
   }
 
   const none = document.createElement('div');
   none.className = 'tag-dropdown-item' + (c.value ? '' : ' selected');
+  none.setAttribute('role', 'option');
   none.textContent = '— None —';
-  none.addEventListener('click', () => { setCombo(id, ''); closeCombo(id); });
+  none._activate = () => { setCombo(id, ''); closeCombo(id); };
+  none.addEventListener('click', none._activate);
   dd.appendChild(none);
 
   // The current value is merged in even when it is no longer a listed option,
@@ -207,10 +245,12 @@ function renderComboList(id) {
   options.sort((a, b) => a.localeCompare(b)).forEach(name => {
     const item = document.createElement('div');
     item.className = 'tag-dropdown-item' + (name === c.value ? ' selected' : '');
+    item.setAttribute('role', 'option');
     const label = document.createElement('span');
     label.textContent = name;
     item.appendChild(label);
-    item.addEventListener('click', () => { setCombo(id, name); closeCombo(id); });
+    item._activate = () => { setCombo(id, name); closeCombo(id); };
+    item.addEventListener('click', item._activate);
 
     if (c.kind.remove) item.appendChild(optionDeleteBtn(name, c.kind.usage(name), c.kind.remove, () => closeCombo(id)));
     dd.appendChild(item);
@@ -419,9 +459,11 @@ function isOpen(overlayId) {
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-      // Confirm can stack on top of the detail modal (e.g. delete-entry), so
-      // it must be checked first — otherwise Escape closes the modal underneath.
+      // Confirm/prompt can stack on top of the detail modal (e.g. delete-entry,
+      // "+ Add New" tag), so they must be checked first — otherwise Escape
+      // closes the modal underneath instead of the one on top.
       if (isOpen('confirm-overlay')) return document.getElementById('confirm-cancel').click();
+      if (isOpen('prompt-overlay')) return document.getElementById('prompt-cancel').click();
       if (isOpen('detail-overlay')) return closeDetail();
       if (isOpen('board-picker-overlay')) return closeBoardPicker();
       return;
@@ -438,7 +480,7 @@ function setupKeyboardShortcuts() {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const t = e.target;
     if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable) return;
-    if (isOpen('detail-overlay') || isOpen('board-picker-overlay') || isOpen('confirm-overlay')) return;
+    if (isOpen('detail-overlay') || isOpen('board-picker-overlay') || isOpen('confirm-overlay') || isOpen('prompt-overlay')) return;
 
     switch (e.key) {
       case '/': e.preventDefault(); navigate('browse'); document.getElementById('search-input').focus(); break;
@@ -695,15 +737,15 @@ function syncLayoutButtons() {
     b.classList.toggle('active', b.dataset.layout === state.layout));
 }
 
-function renderGrid(gridEl, entries, clickOpensDetail = true) {
+function renderGrid(gridEl, entries, clickOpensDetail = true, boardId = null) {
   gridEl.innerHTML = '';
   entries.forEach(entry => {
-    const card = createCard(entry, clickOpensDetail);
+    const card = createCard(entry, clickOpensDetail, boardId);
     gridEl.appendChild(card);
   });
 }
 
-function createCard(entry, clickOpensDetail) {
+function createCard(entry, clickOpensDetail, boardId = null) {
   const card = document.createElement('div');
   card.className = 'entry-card';
   card.dataset.id = entry.id;
@@ -743,6 +785,18 @@ function createCard(entry, clickOpensDetail) {
   openBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M5 2H2v9h9V8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M7.5 1.5H11.5V5.5M11.5 1.5L6 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   openBtn.addEventListener('click', e => e.stopPropagation());
   overlay.append(openBtn, favBtn);
+
+  if (boardId) {
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'card-remove-board';
+    removeBtn.title = 'Remove from board';
+    removeBtn.textContent = '✕';
+    removeBtn.addEventListener('click', async e => {
+      e.stopPropagation();
+      await removeEntryFromBoard(entry.id, boardId);
+    });
+    overlay.appendChild(removeBtn);
+  }
   thumb.appendChild(overlay);
 
   // Bulk check
@@ -783,7 +837,9 @@ function createCard(entry, clickOpensDetail) {
 
   card.addEventListener('click', e => {
     if (state.bulkMode) {
-      toggleSelect(entry.id, card);
+      if (e.shiftKey && state.selectAnchorId) selectRange(state.selectAnchorId, entry.id, card.parentElement);
+      else toggleSelect(entry.id, card);
+      state.selectAnchorId = entry.id;
       return;
     }
     if (clickOpensDetail) openDetail(entry.id);
@@ -880,8 +936,13 @@ function createRow(entry, clickOpensDetail) {
 
   row.append(check, thumb, main, type, tags, actions);
 
-  row.addEventListener('click', () => {
-    if (state.bulkMode) { toggleSelect(entry.id, row); return; }
+  row.addEventListener('click', e => {
+    if (state.bulkMode) {
+      if (e.shiftKey && state.selectAnchorId) selectRange(state.selectAnchorId, entry.id, row.parentElement);
+      else toggleSelect(entry.id, row);
+      state.selectAnchorId = entry.id;
+      return;
+    }
     if (clickOpensDetail) openDetail(entry.id);
   });
 
@@ -893,6 +954,7 @@ function createRow(entry, clickOpensDetail) {
 function setBulkMode(on) {
   state.bulkMode = on;
   state.selectedIds.clear();
+  state.selectAnchorId = null;
   document.getElementById('bulk-toggle').classList.toggle('active', on);
   document.getElementById('bulk-bar').style.display = on ? '' : 'none';
   document.getElementById('entry-grid').classList.toggle('bulk-mode', on);
@@ -975,6 +1037,22 @@ function toggleSelect(id, card) {
   } else {
     state.selectedIds.add(id);
     card.classList.add('selected');
+  }
+  updateBulkCount();
+}
+
+// Shift-click range select: selects every card between the last-clicked
+// entry (anchor) and the one just shift-clicked, in their on-screen order.
+function selectRange(anchorId, targetId, container) {
+  const cards = [...container.children];
+  const ids = cards.map(el => el.dataset.id);
+  const a = ids.indexOf(anchorId);
+  const b = ids.indexOf(targetId);
+  if (a === -1 || b === -1) return;
+  const [lo, hi] = a < b ? [a, b] : [b, a];
+  for (let i = lo; i <= hi; i++) {
+    state.selectedIds.add(ids[i]);
+    cards[i].classList.add('selected');
   }
   updateBulkCount();
 }
@@ -1070,16 +1148,17 @@ function openBoard(board) {
 
   document.getElementById('add-to-board-btn').onclick = () => openBoardPicker(board);
 
-  document.getElementById('rename-board-btn').onclick = async () => {
-    const name = prompt('New board name:', board.name);
-    if (!name || name === board.name) return;
-    const updated = await api.put(`/api/boards/${board.id}`, { name });
-    const idx = state.boards.findIndex(b => b.id === board.id);
-    state.boards[idx] = updated;
-    document.getElementById('boards-title').textContent = updated.name;
-    state.currentBoard = updated;
-    updateFormBoardChips();
-    renderBoardFilters();
+  document.getElementById('rename-board-btn').onclick = () => {
+    prompt_('Rename board', board.name, async name => {
+      if (!name || name === board.name) return;
+      const updated = await api.put(`/api/boards/${board.id}`, { name });
+      const idx = state.boards.findIndex(b => b.id === board.id);
+      state.boards[idx] = updated;
+      document.getElementById('boards-title').textContent = updated.name;
+      state.currentBoard = updated;
+      updateFormBoardChips();
+      renderBoardFilters();
+    });
   };
 
   document.getElementById('delete-board-btn').onclick = () => {
@@ -1094,8 +1173,18 @@ function openBoard(board) {
   };
 
   const entries = state.entries.filter(e => (e.boards || []).includes(board.id));
-  renderGrid(document.getElementById('board-entry-grid'), entries);
+  renderGrid(document.getElementById('board-entry-grid'), entries, true, board.id);
   document.getElementById('board-empty').style.display = entries.length === 0 ? '' : 'none';
+}
+
+async function removeEntryFromBoard(entryId, boardId) {
+  const idx = state.entries.findIndex(e => e.id === entryId);
+  if (idx === -1) return;
+  const boards = (state.entries[idx].boards || []).filter(b => b !== boardId);
+  state.entries[idx] = await api.put(`/api/entries/${entryId}`, { boards });
+  if (state.currentBoard && state.currentBoard.id === boardId) openBoard(state.currentBoard);
+  renderBoardFilters();
+  toastSuccess('Removed from board.');
 }
 
 // ── Board picker: add existing entries to the currently open board ──
@@ -1178,14 +1267,15 @@ document.getElementById('board-back').addEventListener('click', () => {
   renderBoards();
 });
 
-document.getElementById('new-board-btn').addEventListener('click', async () => {
-  const name = prompt('Board name:');
-  if (!name) return;
-  const board = await api.post('/api/boards', { name });
-  state.boards.push(board);
-  renderBoards();
-  updateFormBoardChips();
-  renderBoardFilters();
+document.getElementById('new-board-btn').addEventListener('click', () => {
+  prompt_('New board', '', async name => {
+    if (!name) return;
+    const board = await api.post('/api/boards', { name });
+    state.boards.push(board);
+    renderBoards();
+    updateFormBoardChips();
+    renderBoardFilters();
+  });
 });
 
 // ═══════════════════════════════════════════ ADD / EDIT FORM ══
@@ -1421,6 +1511,9 @@ function setupTagInput(inputId, dropdownId, pillsId, tagsArr, onUpdate) {
   input.addEventListener('input', () => renderTagDropdown(input, dropdown, tagsArr, onUpdate));
   input.addEventListener('focus', () => renderTagDropdown(input, dropdown, tagsArr, onUpdate));
   input.addEventListener('keydown', e => {
+    // Up/Down highlights a row; Enter on a highlighted row activates it
+    // instead of falling through to the quick-add-typed-text behavior below.
+    if (navigateDropdown(e, dropdown)) return;
     if (e.key === 'Enter') {
       e.preventDefault();
       const val = input.value.trim();
@@ -1449,40 +1542,44 @@ function renderTagDropdown(input, dropdown, tagsArr, onUpdate) {
     .filter(t => !tagsArr.includes(t) && t.toLowerCase().includes(q))
     .sort((a, b) => a.localeCompare(b));
   dropdown.innerHTML = '';
+  dropdown.setAttribute('role', 'listbox');
 
   // "+ Add New" is always pinned first; typed text (if any) is offered as the default name.
   const addNew = document.createElement('div');
   addNew.className = 'tag-dropdown-item create';
+  addNew.setAttribute('role', 'option');
   addNew.textContent = '+ Add New';
-  addNew.addEventListener('mousedown', e => {
-    e.preventDefault();
-    const val = (prompt('New style tag name:', input.value.trim()) || '').trim();
-    if (val && !tagsArr.includes(val)) {
-      tagsArr.push(val);
-      if (!state.tags.includes(val)) {
-        state.tags.push(val);
-        api.post('/api/tags', { name: val }).catch(() => {});
-      }
-    }
-    input.value = '';
+  addNew._activate = () => {
     dropdown.style.display = 'none';
-    onUpdate();
-  });
+    prompt_('New style tag', input.value.trim(), val => {
+      if (val && !tagsArr.includes(val)) {
+        tagsArr.push(val);
+        if (!state.tags.includes(val)) {
+          state.tags.push(val);
+          api.post('/api/tags', { name: val }).catch(() => {});
+        }
+      }
+      input.value = '';
+      onUpdate();
+    });
+  };
+  addNew.addEventListener('mousedown', e => { e.preventDefault(); addNew._activate(); });
   dropdown.appendChild(addNew);
 
   available.forEach(tag => {
     const item = document.createElement('div');
     item.className = 'tag-dropdown-item';
+    item.setAttribute('role', 'option');
     const label = document.createElement('span');
     label.textContent = tag;
     item.appendChild(label);
-    item.addEventListener('mousedown', e => {
-      e.preventDefault();
+    item._activate = () => {
       tagsArr.push(tag);
       input.value = '';
       dropdown.style.display = 'none';
       onUpdate();
-    });
+    };
+    item.addEventListener('mousedown', e => { e.preventDefault(); item._activate(); });
 
     const del = optionDeleteBtn(tag, tagUsage(tag), deleteTagOption, () => { dropdown.style.display = 'none'; });
     // The row itself selects on mousedown, so the ✕ must swallow that too.
@@ -1653,6 +1750,33 @@ function confirm_(msg, cb, okLabel = 'Delete') {
   document.getElementById('confirm-ok').textContent = okLabel;
   openModalOverlay('confirm-overlay');
   confirmCallback = cb;
+}
+
+// ═══════════════════════════════════════════ PROMPT MODAL ══
+// Styled stand-in for the browser's native prompt(), used anywhere the app
+// needs a single text value (board names, new tag/type/found-via names).
+let promptCallback = null;
+
+function setupPromptModal() {
+  document.getElementById('prompt-cancel').addEventListener('click', () => {
+    closeModalOverlay('prompt-overlay');
+    promptCallback = null;
+  });
+  document.getElementById('prompt-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const value = document.getElementById('prompt-input').value.trim();
+    closeModalOverlay('prompt-overlay');
+    if (promptCallback) { promptCallback(value); promptCallback = null; }
+  });
+}
+
+function prompt_(title, defaultValue, cb) {
+  document.getElementById('prompt-title').textContent = title;
+  const input = document.getElementById('prompt-input');
+  input.value = defaultValue || '';
+  openModalOverlay('prompt-overlay');
+  input.select();
+  promptCallback = cb;
 }
 
 // ═══════════════════════════════════════════ TOAST ══

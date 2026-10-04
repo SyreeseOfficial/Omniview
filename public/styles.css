@@ -479,6 +479,19 @@ textarea { resize: vertical; }
 }
 .card-open:hover { color: var(--accent); border-color: var(--accent); }
 
+.card-remove-board {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-3);
+  font-size: .65rem;
+  transition: all .12s;
+  z-index: 2;
+}
+.card-remove-board:hover { background: rgba(248,113,113,.15); border-color: var(--danger); color: var(--danger); }
+
 .card-check {
   position: absolute;
   top: .45rem; left: .45rem;
@@ -1122,11 +1135,19 @@ textarea { resize: vertical; }
 .detail-date { color: var(--text-3); font-size: .75rem; }
 .detail-actions { display: flex; gap: .5rem; margin-top: auto; padding-top: .75rem; border-top: 1px solid var(--border); }
 
+@media (max-width: 700px) {
+  .detail-layout { flex-direction: column; overflow-y: auto; }
+  .detail-screenshot-wrap { width: 100%; min-height: 200px; border-right: none; border-bottom: 1px solid var(--border); padding: 1rem; }
+  .detail-screenshot-wrap img { max-height: 45vh; }
+  .detail-meta { width: 100%; overflow-y: visible; padding: 1rem; }
+}
+
 /* Confirm modal */
 .confirm-modal { width: min(400px, 90vw); padding: 1.75rem; }
 .confirm-modal h3 { font-size: 1rem; font-weight: 600; margin-bottom: .6rem; }
 .confirm-modal p { font-size: .85rem; color: var(--text-2); margin-bottom: 1.5rem; line-height: 1.5; }
 .confirm-actions { display: flex; gap: .5rem; justify-content: flex-end; }
+.prompt-input { width: 100%; font-size: .9rem; margin-bottom: 1.5rem; }
 
 /* ─── Toast ──────────────────────────────────────────────────── */
 .toast-container {

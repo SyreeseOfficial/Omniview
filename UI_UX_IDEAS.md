@@ -11,6 +11,12 @@ Backlog of UI/UX improvements for Omniview. Not implemented unless marked done.
 
 ## Done
 
+- **Styled prompt modal replaces `prompt()`** — new board, rename board, and "+ Add New" on the Type/Found-via/Tag dropdowns now use a small reusable text-input modal (same shape as the confirm modal, with a labeled input) instead of the browser's native `prompt()`. Nests correctly with the Escape-key stack (checked before the detail modal underneath it, same fix as confirm).
+- **Search placeholder updated** — now reads "Search by title, URL, tag, or note…", matching what `applyFilters` actually checks.
+- **Detail modal adapts to narrow viewports** — below 700px, `.detail-layout` stacks the screenshot above the fields instead of squeezing a fixed 55/45 row.
+- **"Remove from board" action on board cards** — a ✕ overlay button (mirroring the existing fav/open-site buttons) appears on each card while viewing a board, calling a new `removeEntryFromBoard` that patches the entry's `boards` list via the existing `PUT /api/entries/:id`.
+- **Keyboard navigation in combo/tag dropdowns** — `renderComboList`/`renderTagDropdown` now tag rows `role="option"` inside a `role="listbox"`, and Up/Down moves a `.focused` highlight (Enter activates it) via a shared `navigateDropdown` helper.
+- **Shift-click range select in bulk mode** — shift-clicking a card/row selects every entry between it and the last-clicked one (anchor tracked in `state.selectAnchorId`), the same pattern as Photos-style pickers.
 - **Toast component with success/error/undo-action support** — replaces the two remaining `alert()` calls and gives saves a success toast instead of silence.
 - **5-second "Undo" toast on delete** (single and bulk) — the entry is removed from view immediately, but the server delete (and screenshot cleanup) is deferred until the toast's window elapses with no Undo click.
 - **Modal `role="dialog"`/`aria-modal`, focus trap, and focus-return** — applied to the detail, board-picker, and confirm modals via a shared open/close helper with a nesting-aware stack (confirm can open on top of detail). Also fixed an Escape-key ordering bug this surfaced: Escape now closes the topmost (confirm) modal first instead of the one underneath it.

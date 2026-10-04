@@ -94,7 +94,7 @@
       <!-- Search -->
       <div class="search-bar">
         <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="6.5" cy="6.5" r="5" stroke="currentColor" stroke-width="1.4"/><path d="M10.5 10.5l3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-        <input type="search" id="search-input" placeholder="Search by URL, tag, or note…" autocomplete="off">
+        <input type="search" id="search-input" placeholder="Search by title, URL, tag, or note…" autocomplete="off">
         <button class="search-clear" id="search-clear" style="display:none">✕</button>
       </div>
 
@@ -534,6 +534,20 @@
       <button class="btn-ghost" id="confirm-cancel">Cancel</button>
       <button class="btn-danger" id="confirm-ok">Delete</button>
     </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ PROMPT MODAL ══ -->
+<div class="modal-overlay" id="prompt-overlay" style="display:none">
+  <div class="modal confirm-modal" role="dialog" aria-modal="true" aria-labelledby="prompt-title">
+    <form id="prompt-form">
+      <h3 id="prompt-title">Name</h3>
+      <input type="text" id="prompt-input" class="prompt-input" autocomplete="off">
+      <div class="confirm-actions">
+        <button type="button" class="btn-ghost" id="prompt-cancel">Cancel</button>
+        <button type="submit" class="btn-primary" id="prompt-ok">OK</button>
+      </div>
+    </form>
   </div>
 </div>
 
