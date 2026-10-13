@@ -718,18 +718,6 @@ textarea { resize: vertical; }
 .drop-zone-inner { display: flex; flex-direction: column; align-items: center; gap: .4rem; padding: 1.5rem; color: var(--text-3); font-size: .82rem; }
 .drop-zone-inner svg { opacity: .4; }
 .drop-zone-inner span { color: var(--text-3); }
-.drop-preview { width: 100%; max-height: 280px; object-fit: contain; }
-.drop-clear {
-  position: absolute;
-  top: .5rem; right: .5rem;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xs);
-  padding: .2rem .5rem;
-  font-size: .72rem;
-  color: var(--text-2);
-}
-.drop-clear:hover { color: var(--danger); border-color: var(--danger); }
 
 /* Tag input */
 .tag-input-area {
@@ -1193,3 +1181,127 @@ textarea { resize: vertical; }
 
 /* ─── Misc ────────────────────────────────────────────────────── */
 .header-actions { display: flex; gap: .4rem; }
+
+/* ─── Search count, swatches, favicon ────────────────────────── */
+.result-count { font-size: .72rem; color: var(--text-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.swatch-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: .45rem; padding: .6rem; }
+.swatch {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 2px solid var(--border-2);
+  cursor: pointer;
+  transition: transform .12s, border-color .12s;
+}
+.swatch:hover { transform: scale(1.12); }
+.swatch.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+.favicon { width: 14px; height: 14px; margin-right: .35rem; vertical-align: -2px; border-radius: 2px; }
+#detail-favicon { display: flex; align-items: center; padding-top: .15rem; }
+#detail-favicon .favicon { margin: 0; }
+
+/* ─── Empty states ───────────────────────────────────────────── */
+.empty-hint { font-size: .78rem; color: var(--text-3); }
+.empty-state strong { color: var(--text); font-weight: 600; }
+
+/* ─── Masonry layout (true aspect ratios) ────────────────────── */
+.entry-grid.masonry { display: block; column-width: 220px; column-gap: 1rem; }
+.entry-grid.masonry .entry-card { break-inside: avoid; margin-bottom: 1rem; }
+.entry-grid.masonry .thumb-wrap,
+.entry-grid.masonry .thumb-wrap.mobile { aspect-ratio: auto; display: block; }
+.entry-grid.masonry .thumb-wrap img { height: auto; display: block; }
+.entry-grid.masonry .thumb-placeholder { padding: 2.5rem 0; }
+
+/* ─── Add form: duplicate warning, auto-fill status, screenshot queue ─── */
+.dupe-warning { display: flex; align-items: center; flex-wrap: wrap; gap: .25rem .75rem; }
+.link-btn { color: var(--accent); font-size: inherit; text-decoration: underline; }
+.link-btn:hover { color: var(--accent-2); }
+.unfurl-status { font-size: .72rem; color: var(--text-3); }
+
+.pending-shots { display: flex; flex-wrap: wrap; gap: .6rem; padding: 1rem; width: 100%; }
+.pending-shot { position: relative; width: 112px; height: 76px; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); background: var(--bg-3); }
+.pending-shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pending-shot button {
+  position: absolute; top: .25rem; right: .25rem;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--bg-2); border: 1px solid var(--border);
+  font-size: .6rem; line-height: 1; color: var(--text-2);
+}
+.pending-shot button:hover { color: var(--danger); border-color: var(--danger); }
+.pending-add {
+  width: 112px; height: 76px; border-radius: var(--radius-sm);
+  border: 1.5px dashed var(--border-2); color: var(--text-3);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.4rem; cursor: pointer; transition: all .12s;
+}
+.pending-add:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ─── Bulk bar / buttons ─────────────────────────────────────── */
+.btn-sm:disabled { opacity: .45; cursor: not-allowed; }
+.btn-sm:disabled:hover { border-color: var(--border); color: inherit; }
+.btn-primary:disabled { opacity: .6; cursor: progress; }
+
+/* ─── Detail modal: carousel, palette, prev/next ─────────────── */
+.detail-step .modal-close { right: auto; }
+#detail-prev { left: .75rem; }
+#detail-next { left: 3.4rem; }
+.detail-step .modal-close { font-size: 1rem; }
+.shot-stage { position: relative; width: 100%; display: flex; justify-content: center; }
+.shot-stage img { cursor: zoom-in; }
+.shot-nav {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--bg-2); border: 1px solid var(--border);
+  font-size: 1.1rem; line-height: 1; color: var(--text-2);
+  display: flex; align-items: center; justify-content: center;
+}
+.shot-nav:hover { color: var(--accent); border-color: var(--accent); }
+.shot-prev { left: .25rem; }
+.shot-next { right: .25rem; }
+.shot-count { font-size: .72rem; color: var(--text-3); }
+.shot-actions { display: flex; gap: .5rem; flex-wrap: wrap; justify-content: center; }
+.palette-row { display: flex; gap: .4rem; flex-wrap: wrap; }
+.palette-swatch {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 2px solid var(--border-2); cursor: pointer;
+  transition: transform .12s;
+}
+.palette-swatch:hover { transform: scale(1.15); }
+
+/* Lightbox */
+.lightbox-overlay { z-index: 300; background: rgba(0,0,0,.88); }
+.lightbox { background: none; border: none; box-shadow: none; max-width: 100%; max-height: 100%; overflow: auto; }
+.lightbox img { display: block; max-width: 94vw; max-height: 92vh; object-fit: contain; cursor: zoom-in; margin: 0 auto; }
+.lightbox img.zoomed { max-width: none; max-height: none; cursor: zoom-out; }
+.lightbox .modal-close { position: fixed; top: 1rem; right: 1rem; }
+
+/* ─── Boards: drag targets ───────────────────────────────────── */
+.board-drop-targets { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin-bottom: 1rem; }
+.drop-hint { font-size: .72rem; color: var(--text-3); margin-right: .25rem; }
+.board-chip-toggle.drop-target { border-style: dashed; cursor: default; }
+.board-chip-toggle.drop-target.drag-over { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+
+/* ─── Settings: tag toolbar ──────────────────────────────────── */
+.tag-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-bottom: .75rem; }
+.tag-toolbar select { font-size: .8rem; padding: .25rem .5rem; }
+.tag-list-item input[type=checkbox] { flex: none; width: .85rem; height: .85rem; padding: 0; accent-color: var(--accent); }
+
+/* ─── Drop an image anywhere ─────────────────────────────────── */
+body.file-drag::after {
+  content: 'Drop an image to add it';
+  position: fixed; inset: .75rem; z-index: 500;
+  display: flex; align-items: center; justify-content: center;
+  border: 3px dashed var(--accent); border-radius: var(--radius);
+  background: var(--accent-dim); color: var(--accent);
+  font-size: 1.15rem; font-weight: 500;
+  pointer-events: none;
+}
+
+/* ─── Reduced motion ─────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .spinner { animation-duration: 1.5s !important; animation-iteration-count: infinite !important; } /* progress indicator, not decoration */
+}

@@ -60,7 +60,7 @@
   </nav>
 
   <div class="sidebar-footer">
-    <button class="theme-toggle" id="theme-toggle" title="Toggle dark/light mode">
+    <button class="theme-toggle" id="theme-toggle" title="Toggle dark/light mode" aria-label="Toggle dark/light mode">
       <span class="theme-icon-dark">☾</span>
       <span class="theme-icon-light">☀</span>
     </button>
@@ -78,14 +78,20 @@
         <h1 class="view-title">Browse</h1>
         <div class="header-actions">
           <div class="view-switch" id="view-switch">
-            <button class="view-switch-btn active" data-layout="gallery" title="Gallery view">
+            <button class="view-switch-btn active" data-layout="gallery" title="Gallery view" aria-label="Gallery view" aria-pressed="true">
               <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="1" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
             </button>
-            <button class="view-switch-btn" data-layout="list" title="List view">
+            <button class="view-switch-btn" data-layout="masonry" title="Masonry view (true aspect ratios)" aria-label="Masonry view" aria-pressed="false">
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="8" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="1" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="1" y="11" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="7" width="6" height="8" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
+            </button>
+            <button class="view-switch-btn" data-layout="list" title="List view" aria-label="List view" aria-pressed="false">
               <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="1" y="2" width="3" height="3" rx="0.5" stroke="currentColor" stroke-width="1.4"/><rect x="1" y="6.5" width="3" height="3" rx="0.5" stroke="currentColor" stroke-width="1.4"/><rect x="1" y="11" width="3" height="3" rx="0.5" stroke="currentColor" stroke-width="1.4"/><line x1="6" y1="3.5" x2="15" y2="3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><line x1="6" y1="8" x2="15" y2="8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><line x1="6" y1="12.5" x2="15" y2="12.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
             </button>
           </div>
-          <button class="btn-icon" id="bulk-toggle" title="Multi-select">
+          <button class="btn-icon" id="random-btn" title="Surprise me (R)" aria-label="Open a random entry">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="1.5" width="13" height="13" rx="2.5" stroke="currentColor" stroke-width="1.4"/><circle cx="5.2" cy="5.2" r="1" fill="currentColor"/><circle cx="10.8" cy="5.2" r="1" fill="currentColor"/><circle cx="8" cy="8" r="1" fill="currentColor"/><circle cx="5.2" cy="10.8" r="1" fill="currentColor"/><circle cx="10.8" cy="10.8" r="1" fill="currentColor"/></svg>
+          </button>
+          <button class="btn-icon" id="bulk-toggle" title="Multi-select" aria-label="Multi-select" aria-pressed="false">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="4" width="3" height="3" rx="0.5" stroke="currentColor" stroke-width="1.4"/><rect x="1" y="9" width="3" height="3" rx="0.5" stroke="currentColor" stroke-width="1.4"/><line x1="6" y1="5.5" x2="15" y2="5.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><line x1="6" y1="10.5" x2="15" y2="10.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
           </button>
         </div>
@@ -95,7 +101,8 @@
       <div class="search-bar">
         <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="6.5" cy="6.5" r="5" stroke="currentColor" stroke-width="1.4"/><path d="M10.5 10.5l3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
         <input type="search" id="search-input" placeholder="Search by title, URL, tag, or note…" autocomplete="off">
-        <button class="search-clear" id="search-clear" style="display:none">✕</button>
+        <button class="search-clear" id="search-clear" style="display:none" aria-label="Clear search">✕</button>
+        <span class="result-count" id="result-count" aria-live="polite"></span>
       </div>
 
       <!-- Filters -->
@@ -138,7 +145,18 @@
           </div>
         </details>
 
-        <button class="chip chip-fav" id="filter-fav">♥ Favorites</button>
+        <details class="filter-dropdown" id="filter-color-dd">
+          <summary>
+            <span id="filter-color-label">All Colors</span>
+            <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </summary>
+          <div class="filter-panel">
+            <div class="swatch-grid" id="filter-color-list"></div>
+          </div>
+        </details>
+
+        <button class="chip chip-fav" id="filter-fav" aria-pressed="false">♥ Favorites</button>
+        <button class="chip" id="filter-recent" aria-pressed="false" title="Entries you opened recently">Recent</button>
 
         <details class="filter-dropdown" id="filter-sort-dd">
           <summary>
@@ -156,10 +174,18 @@
       <!-- Bulk bar -->
       <div class="bulk-bar" id="bulk-bar" style="display:none">
         <span id="bulk-count">0 selected</span>
-        <select id="bulk-tag-select" class="bulk-select">
-          <option value="">Add tag…</option>
+        <select id="bulk-action" class="bulk-select" aria-label="Bulk action">
+          <option value="">Action…</option>
+          <option value="tag">Add tag</option>
+          <option value="untag">Remove tag</option>
+          <option value="setType">Set type</option>
+          <option value="addToBoard">Add to board</option>
+          <option value="removeFromBoard">Remove from board</option>
+          <option value="favorite">Favorite</option>
+          <option value="unfavorite">Unfavorite</option>
         </select>
-        <button class="btn-sm" id="bulk-apply-tag">Apply Tag</button>
+        <select id="bulk-value" class="bulk-select" style="display:none" aria-label="Bulk action value"></select>
+        <button class="btn-sm" id="bulk-apply">Apply</button>
         <button class="btn-sm btn-danger" id="bulk-delete">Delete Selected</button>
         <button class="btn-sm btn-ghost" id="bulk-cancel">Cancel</button>
       </div>
@@ -171,8 +197,14 @@
       <div class="entry-list" id="entry-list" style="display:none"></div>
       <div class="empty-state" id="browse-empty" style="display:none">
         <div class="empty-icon">🎨</div>
-        <p>No entries yet. Add your first design reference.</p>
-        <button class="btn-primary" data-view="add">Add Entry</button>
+        <div id="browse-onboarding" style="display:none">
+          <p><strong>Paste a screenshot, or drop an image anywhere</strong> to start your library.</p>
+          <p class="empty-hint"><kbd class="kbd">Ctrl</kbd> + <kbd class="kbd">V</kbd> to paste · <kbd class="kbd">N</kbd> for a new entry</p>
+          <button class="btn-primary" data-view="add">Add Entry</button>
+        </div>
+        <div id="browse-no-match" style="display:none">
+          <p>No entries match your filters.</p>
+        </div>
       </div>
     </div>
   </section>
@@ -202,6 +234,7 @@
           <button class="btn-sm btn-danger" id="delete-board-btn">Delete Board</button>
         </div>
       </div>
+      <div class="board-drop-targets" id="board-drop-targets" style="display:none"></div>
       <div class="entry-grid" id="board-entry-grid"></div>
       <div class="empty-state" id="board-empty" style="display:none">
         <div class="empty-icon">📭</div>
@@ -238,10 +271,9 @@
           <p>Drag &amp; drop a screenshot here</p>
           <span>or</span>
           <label class="btn-sm" for="screenshot-file">Choose file</label>
-          <input type="file" id="screenshot-file" accept="image/*" style="display:none">
+          <input type="file" id="screenshot-file" accept="image/*" multiple style="display:none">
         </div>
-        <img class="drop-preview" id="drop-preview" style="display:none" alt="screenshot preview">
-        <button type="button" class="drop-clear" id="drop-clear" style="display:none">✕ Remove</button>
+        <div class="pending-shots" id="pending-shots" style="display:none"></div>
       </div>
 
       <!-- Fields -->
@@ -249,7 +281,12 @@
         <div class="form-group form-group-full">
           <label for="f-url">URL <span class="required">*</span></label>
           <input type="url" id="f-url" placeholder="https://example.com" required>
-          <div class="dupe-warning" id="dupe-warning" style="display:none">⚠ This URL is already in your library.</div>
+          <div class="dupe-warning" id="dupe-warning" style="display:none">
+            <span>⚠ Already saved.</span>
+            <button type="button" class="link-btn" id="dupe-open">Open it</button>
+            <button type="button" class="link-btn" id="dupe-add">Add anyway</button>
+          </div>
+          <div class="unfurl-status" id="unfurl-status" style="display:none" aria-live="polite"></div>
         </div>
 
         <div class="form-group form-group-full">
@@ -340,6 +377,14 @@
               <input type="text" id="new-tag-input" placeholder="New tag name…">
               <button class="btn-primary" id="add-tag-btn">Add Tag</button>
             </div>
+            <div class="tag-toolbar">
+              <select id="tag-sort" aria-label="Sort tags">
+                <option value="name">Sort: A–Z</option>
+                <option value="count">Sort: Most used</option>
+              </select>
+              <button class="btn-sm" id="tag-merge-btn" disabled>Merge selected…</button>
+              <button class="btn-sm btn-danger" id="tag-bulk-delete-btn" disabled>Delete selected</button>
+            </div>
             <div class="tag-list" id="tag-list"></div>
           </div>
         </details>
@@ -388,6 +433,12 @@
         </div>
       </div>
 
+      <div class="settings-section">
+        <h2 class="settings-heading">Storage</h2>
+        <p class="settings-desc">Delete screenshot files that no entry uses any more (for example left over from an interrupted upload).</p>
+        <button class="btn-sm" id="cleanup-btn">Clean unused files</button>
+      </div>
+
       <div class="settings-section settings-danger-zone">
         <h2 class="settings-heading">Danger Zone</h2>
         <p class="settings-desc">Permanently delete all entries, boards, and tags. This cannot be undone.</p>
@@ -421,6 +472,8 @@
         <div class="shortcut-group">
           <div class="settings-row"><span>New entry</span><kbd class="kbd">N</kbd></div>
           <div class="settings-row"><span>Focus search</span><kbd class="kbd">/</kbd></div>
+          <div class="settings-row"><span>Open a random entry</span><kbd class="kbd">R</kbd></div>
+          <div class="settings-row"><span>Previous / next entry (or screenshot in the lightbox)</span><span><kbd class="kbd">←</kbd> <kbd class="kbd">→</kbd></span></div>
           <div class="settings-row"><span>Save form / add tag</span><span><kbd class="kbd">Ctrl</kbd> + <kbd class="kbd">Enter</kbd></span></div>
         </div>
       </div>
@@ -440,22 +493,35 @@
 <!-- ═══════════════════════════════════════════ DETAIL MODAL ══ -->
 <div class="modal-overlay" id="detail-overlay" style="display:none">
   <div class="modal detail-modal" role="dialog" aria-modal="true" aria-label="Entry details">
-    <button class="modal-close" id="detail-close">✕</button>
+    <button class="modal-close" id="detail-close" aria-label="Close">✕</button>
+    <div class="detail-step">
+      <button class="modal-close" id="detail-prev" aria-label="Previous entry" title="Previous entry (←)">‹</button>
+      <button class="modal-close" id="detail-next" aria-label="Next entry" title="Next entry (→)">›</button>
+    </div>
     <div class="detail-layout">
       <div class="detail-screenshot-wrap">
-        <img id="detail-screenshot" src="" alt="" style="display:none">
+        <div class="shot-stage">
+          <img id="detail-screenshot" alt="" style="display:none" title="Click to enlarge">
+          <button type="button" class="shot-nav shot-prev" id="shot-prev" aria-label="Previous screenshot">‹</button>
+          <button type="button" class="shot-nav shot-next" id="shot-next" aria-label="Next screenshot">›</button>
+        </div>
         <div class="detail-no-screenshot" id="detail-no-screenshot">No screenshot</div>
-        <label class="btn-sm detail-upload-btn" for="detail-screenshot-file">
-          <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1v8M3 4.5L6.5 1 10 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M1.5 10.5h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-          Replace screenshot
-        </label>
-        <input type="file" id="detail-screenshot-file" accept="image/*" style="display:none">
+        <span class="shot-count" id="shot-count" style="display:none"></span>
+        <div class="shot-actions">
+          <label class="btn-sm detail-upload-btn" for="detail-screenshot-file">
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1v8M3 4.5L6.5 1 10 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M1.5 10.5h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            Add screenshot
+          </label>
+          <button type="button" class="btn-sm" id="detail-remove-shot" style="display:none">Remove this one</button>
+        </div>
+        <input type="file" id="detail-screenshot-file" accept="image/*" multiple style="display:none">
       </div>
 
       <div class="detail-meta">
         <div class="detail-top">
-          <a class="detail-url" id="detail-url" href="#" target="_blank" rel="noopener"></a>
-          <button class="fav-btn" id="detail-fav" title="Toggle favorite">♥</button>
+          <span id="detail-favicon"></span>
+          <a class="detail-url" id="detail-url" target="_blank" rel="noopener"></a>
+          <button class="fav-btn" id="detail-fav" title="Toggle favorite" aria-label="Toggle favorite" aria-pressed="false">♥</button>
         </div>
 
         <div class="detail-field">
@@ -471,6 +537,11 @@
         <div class="detail-field">
           <span class="detail-label">Color</span>
           <div class="combo" id="detail-color"></div>
+        </div>
+
+        <div class="detail-field">
+          <span class="detail-label">Palette</span>
+          <div class="palette-row" id="detail-palette"></div>
         </div>
 
         <div class="detail-field">
@@ -551,8 +622,16 @@
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════ LIGHTBOX ══ -->
+<div class="modal-overlay lightbox-overlay" id="lightbox-overlay" style="display:none">
+  <div class="modal lightbox" role="dialog" aria-modal="true" aria-label="Screenshot">
+    <button class="modal-close" id="lightbox-close" aria-label="Close">✕</button>
+    <img id="lightbox-img" alt="" title="Click to toggle actual size">
+  </div>
+</div>
+
 <div class="toast-container" id="toast-container" aria-live="polite" aria-atomic="true"></div>
 
-<script src="app.js"></script>
+<script type="module" src="js/main.js"></script>
 </body>
 </html>

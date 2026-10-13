@@ -7,10 +7,10 @@ Backlog of UI/UX improvements for Omniview. Not implemented unless marked done.
 1. **Save buttons don't disable during the async request** — `entry-form` submit and `detail-save` fire `await api.put/post` but stay clickable the whole time. Double-click (or a slow screenshot upload) can submit twice and create duplicate entries. Small diff: disable button + restore in a `finally`.
 2. **Sidebar doesn't auto-collapse on mobile** — only one breakpoint (860px) hides table columns; the fixed 220px sidebar still eats screen on phone-width. Now that manual collapse exists, auto-collapsing below ~700px is a small CSS add.
 3. **No command palette (Cmd/Ctrl+K)** — jump straight to an entry by title/URL instead of browsing. Worth it only once the library gets large; otherwise premature (YAGNI).
-4. **No favicon shown for entries** — a small site icon next to the URL (card and detail view) would help tell similar-looking screenshots apart at a glance. Needs a source for the icon (extract during screenshot capture, or an external favicon service) — flag as a design decision, not a free add.
 
 ## Done
 
+- **Favicons on entries** — the add form's auto-fill reads the page's `<link rel="icon">` (server-side `GET /api/unfurl`) and stores it on the entry; shown beside the title on cards, list rows, and in the detail modal, and hidden if it fails to load.
 - **Styled prompt modal replaces `prompt()`** — new board, rename board, and "+ Add New" on the Type/Found-via/Tag dropdowns now use a small reusable text-input modal (same shape as the confirm modal, with a labeled input) instead of the browser's native `prompt()`. Nests correctly with the Escape-key stack (checked before the detail modal underneath it, same fix as confirm).
 - **Search placeholder updated** — now reads "Search by title, URL, tag, or note…", matching what `applyFilters` actually checks.
 - **Detail modal adapts to narrow viewports** — below 700px, `.detail-layout` stacks the screenshot above the fields instead of squeezing a fixed 55/45 row.
