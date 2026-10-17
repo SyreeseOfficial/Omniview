@@ -1,6 +1,6 @@
 # Omniview: Findings
 
-Reviewed 2026-10-08. **Not repeated here:** items already in `UI_UX_IDEAS.md` "Open" (disable save buttons, mobile sidebar auto-collapse, Cmd+K palette, favicons). Tags: **[H]** high, **[M]** medium, **[L]** low. `[ ]` = open.
+Reviewed 2026-10-08. Former `UI_UX_IDEAS.md` / `TECHNICAL_IDEAS.md` are merged in at the bottom. Tags: **[H]** high, **[M]** medium, **[L]** low. `[ ]` = open.
 
 # Skip
 - [ ] **[L]** Share a board as a static HTML folder (export board only).
@@ -9,7 +9,6 @@ Reviewed 2026-10-08. **Not repeated here:** items already in `UI_UX_IDEAS.md` "O
 - [ ] **[M]** Per-entry fields for what you actually reference: font names, color hex palette, "what I like" note, so notes are structured and searchable.
 - [ ] **[M]** Saved searches / smart collections (e.g. "Dark Mode + Dashboard"). Filters already persist in `localStorage`; name them and list them in the sidebar.
 - [ ] **[H]** Import. Export exists (`/api/export`, JSON + ZIP) but there is no way to restore from it. Add `POST /api/import` accepting the ZIP (merge or replace) and a Settings button.
-- [ ] **[H]** Personal data is committed to git: `db/library.json` and 30 files in `uploads/` (28 MB `.git`) are tracked, and `.gitignore` covers neither. README promises "Local only, no sharing". Run `git rm -r --cached uploads db/library.json`, add both to `.gitignore`. If the repo was ever pushed publicly, rewrite history or rotate what's in the notes.
 
 # Completed
 
@@ -65,7 +64,7 @@ Reviewed 2026-10-08. **Not repeated here:** items already in `UI_UX_IDEAS.md` "O
 
 ## Round 2 (reviewed 2026-10-13, after the ES-module split, sharp thumbnails and Express 5 move)
 
-Still open from the first list: import/restore, personal data tracked in git (`git ls-files` still shows `db/library.json` and 27 PNGs in `uploads/`; `.gitignore` only covers `uploads/thumbs/`), static board export, extension/bookmarklet, structured fields, saved searches, SQLite. Also still open in `UI_UX_IDEAS.md`: disable save buttons while saving, mobile sidebar auto-collapse, Cmd+K. Items below are new.
+Still open from the first list: import/restore, static board export, extension/bookmarklet, structured fields, saved searches, SQLite. Also still open: the three UI/UX items at the bottom. Items below are new.
 
 ### Bugs and robustness (checked against the code)
 - [ ] **[M]** A failed ZIP export can kill the server. `GET /api/export?format=zip` pipes an `archiver` stream with no `error` handler (`server.js:812-820`). The server now deliberately `process.exit(1)`s on any uncaught exception (`:899`), and an unhandled `error` event on an EventEmitter is one: a file vanishing between `existsSync` and the read, or the client aborting mid-download, takes the whole app down. Add `archive.on('error', ...)` (log + `res.destroy()`), `archive.on('warning', ...)`, and `res.on('close', () => archive.abort())`.
@@ -110,3 +109,23 @@ Still open from the first list: import/restore, personal data tracked in git (`g
 - [ ] **[L]** CI only runs on Node 22. Add 20 (current LTS floor for `node --test` and `fetch` with `AbortSignal.timeout`) and `npm audit --omit=dev` as a non-blocking step; `sharp` has native binaries, so a Linux + macOS matrix catches install failures early.
 - [ ] **[L]** `npm start` has no friendly failure for a busy port: `app.listen` raises `EADDRINUSE` as an uncaught exception, which now exits with a stack trace. Catch the `error` event on the server and print "Port 3737 is in use; set PORT=...".
 - [ ] **[L]** Provide `npm run dev` (`node --watch server.js`) and a small `omniview.service` user unit in `docs/` so the library is always available at `localhost:3737` without a terminal.
+
+---
+
+## Merged from UI_UX_IDEAS.md and TECHNICAL_IDEAS.md
+
+### Open (UI/UX)
+- [ ] **[M]** Save buttons don't disable during the async request (`entry-form` submit, `detail-save`). A double-click or slow upload can create duplicate entries. Disable the button and restore it in a `finally`.
+- [ ] **[L]** Sidebar doesn't auto-collapse on mobile. Only one breakpoint (860px) hides table columns; the 220px sidebar still eats a phone screen. Auto-collapse below ~700px.
+- [ ] **[L]** Command palette (Cmd/Ctrl+K) to jump to an entry by title/URL. Only worth it once the library is large.
+
+### Done (UI/UX)
+- Favicons on entries (via `/api/unfurl`), styled prompt modal replacing `prompt()`, search placeholder/title matching, detail modal stacks below 700px.
+- "Remove from board" on board cards, keyboard nav in dropdowns, shift-click range select in bulk mode, board thumbnail collage.
+- Toast component with a 5-second Undo on delete (single and bulk), modal `role="dialog"` + focus trap + nesting-aware Escape.
+- Filters persist across reload, collapsible sidebar, keyboard shortcuts + Shortcuts tab, sort control, quick "open site" on cards, initial loading spinner, unsaved-changes warning on the form.
+
+### Done (technical)
+- Screenshot clear during edit (`removeScreenshot: true`), atomic `writeDB()` (tmp + rename), in-memory DB (no write races), upload mimetype allowlist (closes SVG XSS).
+- `npm test` via `node --test`, backups before destructive writes, whitespace/duplicate name validation on create and rename.
+- Global error handler, crash safety net, request + write logging.
