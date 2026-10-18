@@ -34,23 +34,24 @@ after(async () => {
 
 const GUARD = { 'X-Omniview': '1' };
 
-async function call(method, urlPath, body) {
+// `space` picks the library ('ui' when omitted, like a request with no X-Space header).
+async function call(method, urlPath, body, space) {
   const res = await fetch(`${base}${urlPath}`, {
     method,
-    headers: body !== undefined ? { 'Content-Type': 'application/json', ...GUARD } : GUARD,
+    headers: { ...(body !== undefined && { 'Content-Type': 'application/json' }), ...GUARD, ...(space && { 'X-Space': space }) },
     body: body !== undefined ? JSON.stringify(body) : undefined
   });
   return { status: res.status, body: await res.json() };
 }
 
-const create = async (url, extra = {}) => (await call('POST', '/api/entries', { url, ...extra })).body.entry;
+const create = async (url, extra = {}, space) => (await call('POST', '/api/entries', { url, ...extra }, space)).body.entry;
 
 const PNG_1PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
 
-async function upload(id, type = 'image/png', data = PNG_1PX) {
+async function upload(id, type = 'image/png', data = PNG_1PX, space) {
   const form = new FormData();
   form.append('screenshot', new Blob([data], { type }), 'shot');
-  const res = await fetch(`${base}/api/entries/${id}/screenshot`, { method: 'POST', headers: GUARD, body: form });
+  const res = await fetch(`${base}/api/entries/${id}/screenshot`, { method: 'POST', headers: { ...GUARD, ...(space && { 'X-Space': space }) }, body: form });
   return { status: res.status, body: await res.json() };
 }
 
@@ -113,6 +114,108 @@ test('concurrent creates are all kept', async () => {
   const list = (await call('GET', '/api/entries')).body;
   assert.equal(ids.filter(id => list.some(e => e.id === id)).length, 20);
   await call('POST', '/api/entries/bulk', { ids, action: 'delete' });
+});
+
+// ─── Spaces (ui / fashion) ───────────────────────────────────────────────────
+// Uploads are shared between spaces, so the orphan sweep must look at every
+// space's entries or using one space would delete the other's screenshots.
+test('cleanup run from one space keeps the other space\'s screenshots', async () => {
+  const fashion = await create('https://sweep-fashion.example', {}, 'fashion');
+  const ui = await create('https://sweep-ui.example');
+  const fashionShot = (await upload(fashion.id, 'image/png', PNG_1PX, 'fashion')).body.screenshot;
+  const uiShot = (await upload(ui.id)).body.screenshot;
+  assert.ok(fashionShot && uiShot, 'uploads into both spaces succeed');
+
+  await call('POST', '/api/cleanup'); // from the UI space
+  assert.ok(fs.existsSync(path.join(UPLOADS, fashionShot)), 'fashion screenshot survives a UI cleanup');
+  await call('POST', '/api/cleanup', {}, 'fashion');
+  assert.ok(fs.existsSync(path.join(UPLOADS, uiShot)), 'UI screenshot survives a fashion cleanup');
+  assert.ok(fs.existsSync(path.join(UPLOADS, 'thumbs', fashionShot.replace(/\.png$/, '.webp'))));
+
+  await call('DELETE', `/api/entries/${fashion.id}`, undefined, 'fashion');
+  await call('DELETE', `/api/entries/${ui.id}`);
+});
+
+test('spaces keep separate entries, tags, types, boards and found-via lists', async () => {
+  const fashionDefaults = (await call('GET', '/api/types', undefined, 'fashion')).body;
+  assert.ok(fashionDefaults.includes('Jacket') && !fashionDefaults.includes('Website'));
+  assert.deepEqual((await call('GET', '/api/tags', undefined, 'fashion')).body, [], 'fashion starts with no style tags');
+  assert.ok(!(await call('GET', '/api/types')).body.includes('Jacket'));
+
+  const f = await create('https://iso-fashion.example', { style_tags: ['Boxy'], type: 'Jacket' }, 'fashion');
+  const board = (await call('POST', '/api/boards', { name: 'Winter' }, 'fashion')).body;
+  await call('POST', '/api/found-via', { name: 'Tiktok' }, 'fashion');
+
+  assert.equal((await call('GET', `/api/entries/${f.id}`)).status, 404, 'a fashion entry is invisible from the UI space');
+  assert.equal((await call('GET', `/api/entries/${f.id}`, undefined, 'fashion')).status, 200);
+  assert.ok(!(await call('GET', '/api/tags')).body.includes('Boxy'));
+  assert.ok(!(await call('GET', '/api/boards')).body.some(b => b.id === board.id));
+  assert.ok(!(await call('GET', '/api/found-via')).body.includes('Tiktok'));
+  assert.equal((await call('POST', '/api/entries', { url: 'https://iso-fashion.example' })).status, 201, 'the same URL may exist in both spaces');
+  assert.equal((await call('POST', '/api/entries', { url: 'https://iso-fashion.example' }, 'fashion')).status, 409);
+
+  await call('POST', '/api/entries/bulk', { ids: [f.id], action: 'delete' }, 'fashion');
+  await call('DELETE', `/api/boards/${board.id}`, undefined, 'fashion');
+});
+
+test('unknown spaces are refused and no header means the UI space', async () => {
+  assert.equal((await call('GET', '/api/entries', undefined, 'nope')).status, 400);
+  assert.equal((await call('GET', '/api/entries', undefined, '__proto__')).status, 400);
+  const e = await create('https://default-space.example');
+  assert.equal((await call('GET', `/api/entries/${e.id}`, undefined, 'ui')).status, 200);
+  await call('DELETE', `/api/entries/${e.id}`);
+});
+
+test('price and brand exist in the fashion space only', async () => {
+  const f = await create('https://pb.example', { price: '  $120 ', brand: 'Acme' }, 'fashion');
+  assert.equal(f.price, '$120');
+  assert.equal(f.brand, 'Acme');
+  const updated = (await call('PUT', `/api/entries/${f.id}`, { price: '$99' }, 'fashion')).body;
+  assert.deepEqual([updated.price, updated.brand], ['$99', 'Acme']);
+  assert.equal((await call('PUT', `/api/entries/${f.id}`, { price: 5 }, 'fashion')).status, 400);
+  assert.equal((await call('PUT', `/api/entries/${f.id}`, { brand: 'x'.repeat(101) }, 'fashion')).status, 400);
+
+  const ui = await create('https://pb-ui.example', { price: '$1', brand: 'Nope' });
+  assert.equal(ui.price, undefined);
+  assert.equal(ui.brand, undefined);
+  assert.equal((await create('https://pb-blank.example', {}, 'fashion')).price, '', 'new fashion entries start with empty price/brand');
+
+  await call('POST', '/api/entries/bulk', { ids: (await call('GET', '/api/entries', undefined, 'fashion')).body.map(e => e.id), action: 'delete' }, 'fashion');
+  await call('DELETE', `/api/entries/${ui.id}`);
+});
+
+test('each space is saved to its own file, with its own daily backup', async () => {
+  const f = await create('https://persist.example', {}, 'fashion');
+  await app.flushDB();
+  const fashionFile = path.join(tmpDir, 'fashion.json');
+  const onDisk = JSON.parse(fs.readFileSync(fashionFile, 'utf8'));
+  assert.ok(onDisk.entries.some(e => e.id === f.id));
+  assert.ok(!JSON.parse(fs.readFileSync(process.env.OMNIVIEW_DB_PATH, 'utf8')).entries.some(e => e.id === f.id));
+
+  await call('PUT', `/api/entries/${f.id}`, { note: 'again' }, 'fashion'); // second write: file exists, so it is backed up first
+  await app.flushDB();
+  const backups = fs.readdirSync(path.join(tmpDir, 'backups'));
+  assert.ok(backups.some(n => /^fashion-\d{4}-\d{2}-\d{2}\.json$/.test(n)));
+  await call('DELETE', `/api/entries/${f.id}`, undefined, 'fashion');
+});
+
+test('export and reset only touch their own space', async () => {
+  const f = await create('https://exp-fashion.example', {}, 'fashion');
+  const u = await create('https://exp-ui.example');
+  await upload(f.id, 'image/png', PNG_1PX, 'fashion');
+
+  const json = await (await fetch(`${base}/api/export?format=json&space=fashion`)).json();
+  assert.ok(json.entries.some(e => e.id === f.id) && !json.entries.some(e => e.id === u.id));
+  const zip = await fetch(`${base}/api/export?format=zip`, { headers: { 'X-Space': 'fashion' } });
+  assert.match(zip.headers.get('content-disposition'), /omniview-fashion-export\.zip/);
+
+  const shot = (await call('GET', `/api/entries/${f.id}`, undefined, 'fashion')).body.screenshot;
+  assert.equal((await call('POST', '/api/reset', { confirm: 'reset' }, 'fashion')).status, 200);
+  assert.deepEqual((await call('GET', '/api/entries', undefined, 'fashion')).body, []);
+  assert.ok((await call('GET', '/api/types', undefined, 'fashion')).body.includes('Jacket'), 'reset restores the fashion defaults');
+  assert.equal(fs.existsSync(path.join(UPLOADS, shot)), false, 'the wiped space\'s screenshots are removed');
+  assert.equal((await call('GET', `/api/entries/${u.id}`)).status, 200, 'the UI space is untouched');
+  await call('DELETE', `/api/entries/${u.id}`);
 });
 
 // ─── Request guard ───────────────────────────────────────────────────────────

@@ -2,7 +2,8 @@
 // actions, favorites, and the sidebar counters.
 
 import {
-  state, COLORS, PLACEHOLDER_SVG, OPEN_ICON, byName, cleanUrl, titleOf, safeHref, thumbImg, faviconImg, colorName
+  state, COLORS, PLACEHOLDER_SVG, OPEN_ICON, byName, cleanUrl, titleOf, safeHref, thumbImg, faviconImg, colorName,
+  defaultFilters, brandPrice, spaceKey
 } from './state.js';
 import { api } from './api.js';
 import { confirm_, toastSuccess, toastError, showToast } from './modals.js';
@@ -12,23 +13,19 @@ import { removeEntryFromBoard } from './boards.js';
 const $ = id => document.getElementById(id);
 
 // ═══════════════════════════════════════════ RECENTLY VIEWED ══
-const RECENT_KEY = 'omniview-recent';
-
 function readRecent() {
-  try { return JSON.parse(localStorage.getItem(RECENT_KEY)) || []; } catch { return []; }
+  try { return JSON.parse(localStorage.getItem(spaceKey('omniview-recent'))) || []; } catch { return []; }
 }
 
 export function recordRecent(id) {
   const ids = [id, ...readRecent().filter(x => x !== id)].slice(0, 12);
-  try { localStorage.setItem(RECENT_KEY, JSON.stringify(ids)); } catch { /* storage unavailable */ }
+  try { localStorage.setItem(spaceKey('omniview-recent'), JSON.stringify(ids)); } catch { /* storage unavailable */ }
 }
 
 // ═══════════════════════════════════════════ SEARCH ══
 export function setupSearch() {
   const input = $('search-input');
   const clear = $('search-clear');
-  input.value = state.filters.q;
-  clear.style.display = state.filters.q ? '' : 'none';
 
   // Rebuilding the grid on every keystroke is wasteful, so typing is debounced.
   let timer;
@@ -48,19 +45,22 @@ export function setupSearch() {
 
 // ═══════════════════════════════════════════ FILTERS ══
 // Search text, tag/type/board/color filters, favorite toggle, and sort order all
-// persist across reloads, the same way theme and layout already do.
-const FILTERS_KEY = 'omniview-filters';
-
+// persist across reloads, the same way theme and layout already do. Each space
+// keeps its own, and this is also what runs when the space is switched.
 export function loadPersistedFilters() {
+  state.filters = defaultFilters();
+  state.sort = 'newest';
   try {
-    const saved = JSON.parse(localStorage.getItem(FILTERS_KEY));
+    const saved = JSON.parse(localStorage.getItem(spaceKey('omniview-filters')));
     if (saved && saved.filters) Object.assign(state.filters, saved.filters);
     if (saved && saved.sort) state.sort = saved.sort;
   } catch { /* ignore malformed/missing storage */ }
+  $('search-input').value = state.filters.q;
+  $('search-clear').style.display = state.filters.q ? '' : 'none';
 }
 
 function persistFilters() {
-  try { localStorage.setItem(FILTERS_KEY, JSON.stringify({ filters: state.filters, sort: state.sort })); } catch { /* storage unavailable */ }
+  try { localStorage.setItem(spaceKey('omniview-filters'), JSON.stringify({ filters: state.filters, sort: state.sort })); } catch { /* storage unavailable */ }
 }
 
 export function setupFilters() {
@@ -163,6 +163,7 @@ function renderTagFilters() {
   $('filter-tags-clear').style.display = n ? '' : 'none';
   $('filter-tags-dd').classList.toggle('active', n > 0);
   $('tag-mode-toggle').style.display = n > 1 ? '' : 'none';
+  document.querySelectorAll('.tag-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === state.filters.tagMode));
 }
 
 export function renderBoardFilters() {
@@ -244,6 +245,7 @@ function applyFilters(entries) {
     const q = f.q.toLowerCase();
     list = list.filter(e =>
       e.title.toLowerCase().includes(q) ||
+      (e.brand || '').toLowerCase().includes(q) ||
       e.url.toLowerCase().includes(q) ||
       e.note.toLowerCase().includes(q) ||
       e.style_tags.some(t => t.toLowerCase().includes(q))
@@ -435,6 +437,13 @@ function createCard(entry, clickOpensDetail, boardId = null) {
   urlEl.title = entry.url;
   body.appendChild(urlEl);
 
+  if (brandPrice(entry)) {
+    const meta = document.createElement('div');
+    meta.className = 'card-meta';
+    meta.textContent = brandPrice(entry);
+    body.appendChild(meta);
+  }
+
   if (entry.style_tags.length) {
     const tagsEl = document.createElement('div');
     tagsEl.className = 'card-tags';
@@ -497,7 +506,7 @@ function createRow(entry, clickOpensDetail) {
   title.append(titleOf(entry));
   const url = document.createElement('div');
   url.className = 'row-url';
-  url.textContent = cleanUrl(entry.url);
+  url.textContent = [brandPrice(entry), cleanUrl(entry.url)].filter(Boolean).join(' · ');
   url.title = entry.url;
   main.append(title, url);
 
@@ -527,7 +536,7 @@ function createRow(entry, clickOpensDetail) {
 
 // ═══════════════════════════════════════════ BULK ══
 // Bulk mode paints both layouts, so every entry point goes through here.
-function setBulkMode(on) {
+export function setBulkMode(on) {
   state.bulkMode = on;
   state.selectedIds.clear();
   state.selectAnchorId = null;
@@ -616,15 +625,19 @@ export function deleteEntriesWithUndo(ids) {
   [...removed].sort((a, b) => b.idx - a.idx).forEach(r => state.entries.splice(r.idx, 1));
   refreshViews();
 
+  // The user may switch space within the 5 seconds, so the calls below name theirs.
+  const space = state.space;
   let undone = false;
   const timer = setTimeout(async () => {
     if (undone) return;
     try {
-      await api.post('/api/entries/bulk', { ids, action: 'delete' });
+      await api.post('/api/entries/bulk', { ids, action: 'delete' }, space);
     } catch {
       toastError('Failed to delete. Reloading entries.');
-      state.entries = await api.get('/api/entries');
-      refreshViews();
+      if (state.space === space) {
+        state.entries = await api.get('/api/entries');
+        refreshViews();
+      }
     }
   }, 5000);
 
@@ -634,6 +647,7 @@ export function deleteEntriesWithUndo(ids) {
     onAction: () => {
       undone = true;
       clearTimeout(timer);
+      if (state.space !== space) return; // still saved server-side; shows up when that space is reopened
       [...removed].sort((a, b) => a.idx - b.idx).forEach(r => state.entries.splice(r.idx, 0, r.entry));
       refreshViews();
     }

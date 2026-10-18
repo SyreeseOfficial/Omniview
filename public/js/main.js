@@ -1,14 +1,14 @@
 // Entry point: boots the app and owns navigation, theme, the sidebar, global
 // keyboard shortcuts, and paste / drag-and-drop of images.
 
-import { state } from './state.js';
+import { state, SPACES } from './state.js';
 import { api } from './api.js';
 import {
   isOpen, confirm_, toastError, setupConfirmModal, setupPromptModal, setupLightbox, closeLightbox
 } from './modals.js';
 import { setupCombos } from './options.js';
 import {
-  loadPersistedFilters, setupSearch, setupFilters, setupLayoutSwitch, setupBulk, renderBrowse, renderFavorites
+  loadPersistedFilters, setupSearch, setupFilters, setupLayoutSwitch, setupBulk, setBulkMode, renderBrowse, renderFavorites, updateStats
 } from './browse.js';
 import { setupBoards, renderBoards, closeBoardPicker } from './boards.js';
 import {
@@ -21,9 +21,11 @@ const $ = id => document.getElementById(id);
 
 async function init() {
   loadPersistedFilters();
+  applySpaceUI();
   await loadAll();
   setupCombos();
   setupNav();
+  setupSpaceSwitch();
   setupTheme();
   setupSidebarCollapse();
   setupKeyboardShortcuts();
@@ -133,6 +135,66 @@ function doNavigate(view) {
   if (view === 'settings') renderSettings();
 }
 
+// ═══════════════════════════════════════════ SPACES (UI / Fashion) ══
+// Everything space-specific in the markup is driven by <html data-space> (CSS
+// .ui-only / .fashion-only) plus these attributes: data-fashion-text and
+// data-fashion-placeholder hold the fashion wording, the markup keeps the UI one.
+function applySpaceUI() {
+  const fashion = state.space === 'fashion';
+  document.documentElement.dataset.space = state.space;
+  document.title = fashion ? 'Omniview · Fashion' : 'Omniview';
+  document.querySelectorAll('.space-btn').forEach(b => {
+    const on = b.dataset.space === state.space;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  });
+  document.querySelectorAll('[data-fashion-text]').forEach(el => {
+    el.dataset.uiText ??= el.textContent;
+    el.textContent = fashion ? el.dataset.fashionText : el.dataset.uiText;
+  });
+  document.querySelectorAll('[data-fashion-placeholder]').forEach(el => {
+    el.dataset.uiPlaceholder ??= el.placeholder;
+    el.placeholder = fashion ? el.dataset.fashionPlaceholder : el.dataset.uiPlaceholder;
+  });
+  document.querySelectorAll('.space-name').forEach(el => { el.textContent = SPACES[state.space]; });
+  // Plain links can't send the X-Space header, so the export links carry it in the URL.
+  $('export-json').href = `/api/export?format=json&space=${state.space}`;
+  $('export-zip').href = `/api/export?format=zip&space=${state.space}`;
+}
+
+function setupSpaceSwitch() {
+  document.querySelectorAll('.space-btn').forEach(b => b.addEventListener('click', () => switchSpace(b.dataset.space)));
+}
+
+export function switchSpace(next) {
+  if (next === state.space) return;
+  if (isFormDirty()) {
+    confirm_('Discard unsaved changes to this entry?', () => { clearFormSnapshot(); doSwitchSpace(next); }, 'Discard');
+    return;
+  }
+  doSwitchSpace(next);
+}
+
+async function doSwitchSpace(next) {
+  const prev = state.space;
+  state.space = next; // the requests below go to the new library
+  try {
+    await loadAll();
+  } catch (err) {
+    state.space = prev;
+    toastError(err.message);
+    return;
+  }
+  try { localStorage.setItem('omniview-space', next); } catch { /* storage unavailable */ }
+  loadPersistedFilters();
+  if (state.bulkMode) setBulkMode(false);
+  state.selectedIds.clear();
+  state.currentBoard = null;
+  applySpaceUI();
+  updateStats();
+  doNavigate(state.view);
+}
+
 // ═══════════════════════════════════════════ THEME ══
 function setupTheme() {
   const root = document.documentElement;
@@ -214,6 +276,7 @@ function setupKeyboardShortcuts() {
       case 'f': case 'F': navigate('favorites'); break;
       case 's': case 'S': navigate('settings'); break;
       case 'r': case 'R': $('random-btn').click(); break;
+      case 'g': case 'G': switchSpace(state.space === 'ui' ? 'fashion' : 'ui'); break;
       case '?': navigate('shortcuts'); break;
     }
   });

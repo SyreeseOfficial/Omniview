@@ -29,6 +29,17 @@
     <span class="brand-name">Omniview</span>
   </div>
 
+  <div class="space-switch" id="space-switch" role="group" aria-label="Library">
+    <button type="button" class="space-btn active" data-space="ui" aria-pressed="true" title="UI inspiration (G)">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M1.5 6h13" stroke="currentColor" stroke-width="1.5"/></svg>
+      <span class="nav-label">UI</span>
+    </button>
+    <button type="button" class="space-btn" data-space="fashion" aria-pressed="false" title="Fashion (G)">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M5.5 2L1.5 4.5l1.5 3 1.5-.8V14h7V6.7l1.5.8 1.5-3L10.5 2c-.3 1-1.2 1.7-2.5 1.7S5.8 3 5.5 2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+      <span class="nav-label">Fashion</span>
+    </button>
+  </div>
+
   <nav class="sidebar-nav">
     <a class="nav-item active" data-view="browse" href="#" title="Browse">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="1" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
@@ -100,7 +111,7 @@
       <!-- Search -->
       <div class="search-bar">
         <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="6.5" cy="6.5" r="5" stroke="currentColor" stroke-width="1.4"/><path d="M10.5 10.5l3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-        <input type="search" id="search-input" placeholder="Search by title, URL, tag, or note…" autocomplete="off">
+        <input type="search" id="search-input" placeholder="Search by title, URL, tag, or note…" data-fashion-placeholder="Search by name, brand, tag, or note…" autocomplete="off">
         <button class="search-clear" id="search-clear" style="display:none" aria-label="Clear search">✕</button>
         <span class="result-count" id="result-count" aria-live="polite"></span>
       </div>
@@ -119,7 +130,7 @@
 
         <details class="filter-dropdown" id="filter-tags-dd">
           <summary>
-            Style Tags
+            <span data-fashion-text="Tags">Style Tags</span>
             <span class="filter-count" id="filter-tags-count" style="display:none"></span>
             <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </summary>
@@ -145,7 +156,7 @@
           </div>
         </details>
 
-        <details class="filter-dropdown" id="filter-color-dd">
+        <details class="filter-dropdown ui-only" id="filter-color-dd">
           <summary>
             <span id="filter-color-label">All Colors</span>
             <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -196,7 +207,7 @@
       <div class="entry-grid" id="entry-grid"></div>
       <div class="entry-list" id="entry-list" style="display:none"></div>
       <div class="empty-state" id="browse-empty" style="display:none">
-        <div class="empty-icon">🎨</div>
+        <div class="empty-icon" data-fashion-text="🧥">🎨</div>
         <div id="browse-onboarding" style="display:none">
           <p><strong>Paste a screenshot, or drop an image anywhere</strong> to start your library.</p>
           <p class="empty-hint"><kbd class="kbd">Ctrl</kbd> + <kbd class="kbd">V</kbd> to paste · <kbd class="kbd">N</kbd> for a new entry</p>
@@ -290,8 +301,18 @@
         </div>
 
         <div class="form-group form-group-full">
-          <label for="f-title">Title</label>
-          <input type="text" id="f-title" placeholder="e.g. Google">
+          <label for="f-title" data-fashion-text="Name">Title</label>
+          <input type="text" id="f-title" placeholder="e.g. Google" data-fashion-placeholder="e.g. Wool overcoat">
+        </div>
+
+        <div class="form-group fashion-only">
+          <label for="f-brand">Brand</label>
+          <input type="text" id="f-brand" maxlength="100" placeholder="e.g. Acme">
+        </div>
+
+        <div class="form-group fashion-only">
+          <label for="f-price">Price</label>
+          <input type="text" id="f-price" maxlength="50" placeholder="e.g. $120">
         </div>
 
         <div class="form-group">
@@ -310,7 +331,7 @@
         </div>
 
         <div class="form-group form-group-full">
-          <label>Style Tags</label>
+          <label data-fashion-text="Tags">Style Tags</label>
           <div class="tag-input-area">
             <div class="tag-pills" id="tag-pills"></div>
             <div class="tag-search-wrap">
@@ -368,7 +389,7 @@
       <div class="settings-section">
         <details class="settings-collapse">
           <summary class="settings-heading">
-            Style Tags
+            <span data-fashion-text="Tags">Style Tags</span>
             <span class="settings-count" id="tag-count"></span>
             <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </summary>
@@ -393,7 +414,7 @@
       <div class="settings-section">
         <details class="settings-collapse">
           <summary class="settings-heading">
-            Entry Types
+            <span data-fashion-text="Item Types">Entry Types</span>
             <span class="settings-count" id="type-count"></span>
             <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </summary>
@@ -426,22 +447,22 @@
 
       <div class="settings-section">
         <h2 class="settings-heading">Export / Backup</h2>
-        <p class="settings-desc">Download your entire library to back it up or move it.</p>
+        <p class="settings-desc">Download the library you're in (<span class="space-name"></span>) to back it up or move it. The other library is exported separately.</p>
         <div class="settings-row-actions">
-          <a class="btn-sm" href="/api/export?format=json" download>Export JSON</a>
-          <a class="btn-sm" href="/api/export?format=zip" download>Export ZIP (with screenshots)</a>
+          <a class="btn-sm" id="export-json" href="/api/export?format=json" download>Export JSON</a>
+          <a class="btn-sm" id="export-zip" href="/api/export?format=zip" download>Export ZIP (with screenshots)</a>
         </div>
       </div>
 
       <div class="settings-section">
         <h2 class="settings-heading">Storage</h2>
-        <p class="settings-desc">Delete screenshot files that no entry uses any more (for example left over from an interrupted upload).</p>
+        <p class="settings-desc">Delete screenshot files that no entry uses any more, in either library (for example left over from an interrupted upload).</p>
         <button class="btn-sm" id="cleanup-btn">Clean unused files</button>
       </div>
 
       <div class="settings-section settings-danger-zone">
         <h2 class="settings-heading">Danger Zone</h2>
-        <p class="settings-desc">Permanently delete all entries, boards, and tags. This cannot be undone.</p>
+        <p class="settings-desc">Permanently delete all entries, boards, and tags in the <span class="space-name"></span> library. The other library is not touched. This cannot be undone.</p>
         <button class="btn-danger" id="reset-btn">Factory Reset</button>
       </div>
 
@@ -463,6 +484,7 @@
           <div class="settings-row"><span>Go to Boards</span><kbd class="kbd">O</kbd></div>
           <div class="settings-row"><span>Go to Favorites</span><kbd class="kbd">F</kbd></div>
           <div class="settings-row"><span>Go to Settings</span><kbd class="kbd">S</kbd></div>
+          <div class="settings-row"><span>Switch between UI and Fashion</span><kbd class="kbd">G</kbd></div>
           <div class="settings-row"><span>Show this page</span><kbd class="kbd">?</kbd></div>
         </div>
       </div>
@@ -525,8 +547,18 @@
         </div>
 
         <div class="detail-field">
-          <span class="detail-label">Title</span>
-          <input type="text" id="detail-title" class="detail-input" placeholder="e.g. Google">
+          <span class="detail-label" data-fashion-text="Name">Title</span>
+          <input type="text" id="detail-title" class="detail-input" placeholder="e.g. Google" data-fashion-placeholder="e.g. Wool overcoat">
+        </div>
+
+        <div class="detail-field fashion-only">
+          <span class="detail-label">Brand</span>
+          <input type="text" id="detail-brand" class="detail-input" maxlength="100" placeholder="e.g. Acme">
+        </div>
+
+        <div class="detail-field fashion-only">
+          <span class="detail-label">Price</span>
+          <input type="text" id="detail-price" class="detail-input" maxlength="50" placeholder="e.g. $120">
         </div>
 
         <div class="detail-field">
@@ -539,13 +571,13 @@
           <div class="combo" id="detail-color"></div>
         </div>
 
-        <div class="detail-field">
+        <div class="detail-field ui-only">
           <span class="detail-label">Palette</span>
           <div class="palette-row" id="detail-palette"></div>
         </div>
 
         <div class="detail-field">
-          <span class="detail-label">Style Tags</span>
+          <span class="detail-label" data-fashion-text="Tags">Style Tags</span>
           <div class="tag-input-area">
             <div class="tag-pills" id="detail-tag-pills"></div>
             <div class="tag-search-wrap">

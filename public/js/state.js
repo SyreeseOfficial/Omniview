@@ -1,6 +1,12 @@
 // Shared app state, constants, and small pure helpers.
 
+// Two separate libraries on one server: 'ui' (design inspiration) and 'fashion'
+// (wishlist). The server picks one per request from the X-Space header (api.js).
+export const SPACES = { ui: 'UI', fashion: 'Fashion' };
+export const defaultFilters = () => ({ q: '', type: '', tags: [], board: '', color: '', favorite: false, recent: false, tagMode: 'any' });
+
 export const state = {
+  space: localStorage.getItem('omniview-space') === 'fashion' ? 'fashion' : 'ui',
   view: 'browse',
   layout: localStorage.getItem('omniview-layout') || 'gallery', // gallery | masonry | list
   entries: [],
@@ -8,7 +14,7 @@ export const state = {
   tags: [],
   types: [],
   foundVia: [],
-  filters: { q: '', type: '', tags: [], board: '', color: '', favorite: false, recent: false, tagMode: 'any' },
+  filters: defaultFilters(),
   sort: 'newest',
   bulkMode: false,
   selectedIds: new Set(),
@@ -95,6 +101,12 @@ export function thumbImg(file, alt = '') {
 }
 
 export function titleOf(e) { return e.title || cleanUrl(e.url); }
+
+// "Acme · $120" under a fashion entry's name (either part may be missing).
+export const brandPrice = e => [e.brand, e.price].filter(Boolean).join(' · ');
+
+// Per-space localStorage key, so each library remembers its own filters and recents.
+export const spaceKey = base => (state.space === 'ui' ? base : `${base}-${state.space}`);
 
 export const byName = (a, b) => a.localeCompare(b);
 

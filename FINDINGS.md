@@ -9,6 +9,8 @@ Reviewed 2026-10-08. Former `UI_UX_IDEAS.md` / `TECHNICAL_IDEAS.md` are merged i
 - [ ] **[M]** Per-entry fields for what you actually reference: font names, color hex palette, "what I like" note, so notes are structured and searchable.
 - [ ] **[M]** Saved searches / smart collections (e.g. "Dark Mode + Dashboard"). Filters already persist in `localStorage`; name them and list them in the sidebar.
 - [ ] **[H]** Import. Export exists (`/api/export`, JSON + ZIP) but there is no way to restore from it. Add `POST /api/import` accepting the ZIP (merge or replace) and a Settings button.
+- [x] **[M]** Fashion space (second library with a sidebar toggle, `price` and `brand` fields). Built; see `docs/FASHION_SPACE.md`.
+- [ ] **[L]** Maybe: batch add. A textarea where you paste many URLs (one per line, e.g. copied from Obsidian), each run through the existing `/api/fetch` and saved as an entry, with duplicate detection. Skips failures and reports them at the end.
 
 # Completed
 

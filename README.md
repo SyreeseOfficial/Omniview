@@ -15,6 +15,7 @@ Omniview centralizes your scattered design inspiration into one searchable local
 - **Browse & Search**: Gallery, masonry, or list layout; filter by type, tag, board, favorite, or dominant color swatch
 - **Project Boards**: Group designs into project-specific boards; drag a card onto another board to add it
 - **Duplicate detection**: Saving a page you already have (ignoring `www.`, `http`/`https`, trailing slashes, and tracking parameters) offers "Open it" or "Add anyway"
+- **Two libraries**: a sidebar toggle (or `G`) switches between UI inspiration and a Fashion wishlist. Each has its own entries, tags, boards, types, and found-via list. Fashion entries also have a `brand` and a typed-in `price`, and no color filter.
 - **Local Only**: Everything runs on your machine—no cloud, no accounts, no sharing. The only outgoing requests are the page fetches you trigger by entering a URL.
 
 ## Getting Started
@@ -37,7 +38,7 @@ Press `?` in the app for the keyboard shortcuts.
 
 - **Frontend**: Browser-based interface (plain ES modules in `public/js/`, no build step)
 - **Backend**: Express 5 server with file upload and storage; thumbnails and color palettes via [sharp](https://sharp.pixelplumbing.com/)
-- **Database**: Local JSON library (`db/library.json`), kept in memory and saved with a short debounce. The first write of each day also saves a copy to `db/backups/` (last 7 kept).
+- **Database**: Local JSON libraries (`db/library.json` for UI, `db/fashion.json` for Fashion), kept in memory and saved with a short debounce. The first write of each day also saves a copy of each to `db/backups/` (last 7 kept). Uploads are shared between the two.
 
 ## Project Structure
 
@@ -47,7 +48,7 @@ Press `?` in the app for the keyboard shortcuts.
 │   ├── styles.css
 │   └── js/           # ES modules: main (boot, nav, shortcuts), state, api, browse,
 │                     #   entry (add form + detail), boards, options, settings, modals
-├── db/               # library.json (+ backups/)
+├── db/               # library.json, fashion.json (+ backups/)
 ├── uploads/          # Screenshots (+ thumbs/, generated)
 ├── test/             # API tests (npm test)
 ├── docs/             # README images
@@ -59,12 +60,14 @@ Press `?` in the app for the keyboard shortcuts.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `PORT` | `3737` | Port to listen on (always bound to `127.0.0.1`) |
-| `OMNIVIEW_DB_PATH` | `db/library.json` | Library file |
+| `OMNIVIEW_DB_PATH` | `db/library.json` | UI library file (`fashion.json` is saved next to it) |
 | `OMNIVIEW_UPLOADS_DIR` | `uploads/` | Screenshot folder |
 
 ## API
 
 JSON over HTTP on the same origin. Every non-`GET` request must send `X-Omniview: 1`, and the `Host`/`Origin` must be local; this stops other websites from calling the API through your browser.
+
+Every `/api` call acts on one library: send `X-Space: ui|fashion` (or `?space=` for plain links such as exports). No header means `ui`; anything else is a `400`. `price` and `brand` are only read and stored in the `fashion` space.
 
 | Endpoint | Purpose |
 | --- | --- |
@@ -79,9 +82,9 @@ JSON over HTTP on the same origin. Every non-`GET` request must send `X-Omniview
 | `GET /api/duplicate?url=` | Is this URL already saved? |
 | `/api/boards`, `/api/tags`, `/api/types`, `/api/found-via` | Managed lists (create, rename, delete) |
 | `POST /api/tags/merge`, `POST /api/tags/bulk-delete` | Merge or delete several tags |
-| `GET /api/export?format=json\|zip` | Export the library (ZIP includes screenshots) |
-| `POST /api/cleanup` | Delete upload files no entry references |
-| `POST /api/reset` | Wipe everything; requires `{"confirm":"reset"}` |
+| `GET /api/export?format=json\|zip` | Export one library (ZIP includes screenshots) |
+| `POST /api/cleanup` | Delete upload files no entry in either library references |
+| `POST /api/reset` | Wipe one library; requires `{"confirm":"reset"}` |
 
 ## Single-User Design
 

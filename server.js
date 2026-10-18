@@ -6,6 +6,7 @@ const multer = require('multer');
 const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
+const { AsyncLocalStorage } = require('async_hooks');
 const archiver = require('archiver');
 const { v4: uuidv4 } = require('uuid');
 
@@ -17,6 +18,7 @@ const PORT = process.env.PORT || 3737;
 const DB_PATH = process.env.OMNIVIEW_DB_PATH || path.join(__dirname, 'db', 'library.json');
 const UPLOADS_DIR = process.env.OMNIVIEW_UPLOADS_DIR || path.join(__dirname, 'uploads');
 const THUMBS_DIR = path.join(UPLOADS_DIR, 'thumbs');
+const FASHION_DB_PATH = path.join(path.dirname(DB_PATH), 'fashion.json');
 const BACKUP_DIR = path.join(path.dirname(DB_PATH), 'backups');
 
 // Ensure dirs exist
@@ -39,15 +41,32 @@ const DEFAULT_DB = {
   foundVia: ['Dribbble', 'Google', 'Instagram', 'Newsletter', 'Pinterest', 'Referral', 'Twitter/X']
 };
 
-// Loaded once at startup and kept live in memory. Every route mutates and
-// reads this same object, so there's no per-request disk read (cheap) and no
-// race between two requests reading stale state off disk (the thing the old
-// read-mutate-write-per-request version was vulnerable to).
-let cache = null;
+const FASHION_DB = {
+  entries: [],
+  boards: [],
+  tags: [],
+  types: ['Jacket', 'Shirt', 'Knitwear', 'Pants', 'Shoes', 'Hat', 'Bag', 'Accessory'],
+  foundVia: ['Google', 'Instagram', 'Pinterest', 'Reddit', 'Referral', 'Store']
+};
+
+// Two independent libraries ("spaces"). Each is loaded once at startup and kept
+// live in memory. Every route mutates and reads its space's object, so there's
+// no per-request disk read (cheap) and no race between two requests reading
+// stale state off disk (the thing the old read-mutate-write-per-request
+// version was vulnerable to).
+const SPACES = {
+  ui: { file: DB_PATH, defaults: DEFAULT_DB, data: null, dirty: false },
+  fashion: { file: FASHION_DB_PATH, defaults: FASHION_DB, data: null, dirty: false }
+};
+
+// The request's space. AsyncLocalStorage (not a module variable) because routes
+// `await` page fetches and image work, so requests interleave.
+const spaceStore = new AsyncLocalStorage();
+const currentSpace = () => spaceStore.getStore() || 'ui';
 
 // Brings entries written by older versions up to the current shape, so routes
 // never have to guard against a missing array.
-function normalizeEntry(e) {
+function normalizeEntry(e, space) {
   if (!Array.isArray(e.style_tags)) e.style_tags = [];
   if (!Array.isArray(e.boards)) e.boards = [];
   if (!Array.isArray(e.palette)) e.palette = [];
@@ -57,52 +76,59 @@ function normalizeEntry(e) {
   if (typeof e.note !== 'string') e.note = '';
   if (typeof e.found_via !== 'string') e.found_via = '';
   e.favorite = !!e.favorite;
+  if (space === 'fashion') {
+    if (typeof e.brand !== 'string') e.brand = '';
+    if (typeof e.price !== 'string') e.price = '';
+  }
 }
 
-function loadDB() {
+function loadDB(space) {
+  const lib = SPACES[space];
   try {
-    cache = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
+    lib.data = JSON.parse(fs.readFileSync(lib.file, 'utf8'));
   } catch (err) {
     // A missing file is a first run. A file that exists but won't parse is kept
     // aside instead of being silently overwritten by the next save.
     if (err.code !== 'ENOENT') {
-      const aside = `${DB_PATH}.corrupt-${Date.now()}`;
-      fs.renameSync(DB_PATH, aside);
-      console.error(`library.json was unreadable (${err.message}); moved to ${aside}`);
+      const aside = `${lib.file}.corrupt-${Date.now()}`;
+      fs.renameSync(lib.file, aside);
+      console.error(`${path.basename(lib.file)} was unreadable (${err.message}); moved to ${aside}`);
     }
-    cache = JSON.parse(JSON.stringify(DEFAULT_DB));
+    lib.data = JSON.parse(JSON.stringify(lib.defaults));
   }
   // Back-fill fields added after this file was first written
-  if (!cache.types) cache.types = [...DEFAULT_DB.types];
-  if (!cache.foundVia) cache.foundVia = [...DEFAULT_DB.foundVia];
-  cache.entries.forEach(normalizeEntry);
+  if (!lib.data.types) lib.data.types = [...lib.defaults.types];
+  if (!lib.data.foundVia) lib.data.foundVia = [...lib.defaults.foundVia];
+  lib.data.entries.forEach(e => normalizeEntry(e, space));
 }
 
 function readDB() {
-  return cache;
+  return SPACES[currentSpace()].data;
 }
 
 // Writes are debounced: a burst of mutations (favorite toggles, bulk edits)
-// costs one disk write. `flushDB` is also called on shutdown and by tests.
-let dirty = false;
+// costs one disk write. `flushDB` is also called on shutdown and by tests, and
+// saves every space that changed.
 let saveTimer = null;
 let saving = Promise.resolve();
 
 function writeDB(data) {
-  cache = data;
-  dirty = true;
+  const lib = SPACES[currentSpace()];
+  lib.data = data;
+  lib.dirty = true;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(flushDB, 200);
 }
 
 // One backup per day (the state just before that day's first write); keeps the last 7.
-async function backupDaily() {
-  const dest = path.join(BACKUP_DIR, `library-${new Date().toISOString().slice(0, 10)}.json`);
-  if (!fs.existsSync(DB_PATH) || fs.existsSync(dest)) return;
+async function backupDaily(lib) {
+  const name = path.basename(lib.file, '.json');
+  const dest = path.join(BACKUP_DIR, `${name}-${new Date().toISOString().slice(0, 10)}.json`);
+  if (!fs.existsSync(lib.file) || fs.existsSync(dest)) return;
   await fs.promises.mkdir(BACKUP_DIR, { recursive: true });
-  await fs.promises.copyFile(DB_PATH, dest);
+  await fs.promises.copyFile(lib.file, dest);
   const old = (await fs.promises.readdir(BACKUP_DIR))
-    .filter(f => /^library-\d{4}-\d{2}-\d{2}\.json$/.test(f))
+    .filter(f => new RegExp(`^${name}-\\d{4}-\\d{2}-\\d{2}\\.json$`).test(f))
     .sort()
     .slice(0, -7);
   await Promise.all(old.map(f => fs.promises.unlink(path.join(BACKUP_DIR, f))));
@@ -110,33 +136,38 @@ async function backupDaily() {
 
 function flushDB() {
   clearTimeout(saveTimer);
-  if (!dirty) return saving;
-  dirty = false;
-  const data = cache;
-  saving = saving.then(async () => {
-    await backupDaily();
-    // Write to a temp file and rename over the original so a crash mid-write
-    // can never leave library.json truncated.
-    const tmpPath = `${DB_PATH}.tmp`;
-    await fs.promises.writeFile(tmpPath, JSON.stringify(data));
-    await fs.promises.rename(tmpPath, DB_PATH);
-    console.log(`[${new Date().toISOString()}] library.json written (${data.entries.length} entries, ${data.boards.length} boards)`);
-  }).catch(err => {
-    dirty = true;
-    console.error('Failed to write library.json:', err);
-  });
+  for (const lib of Object.values(SPACES)) {
+    if (!lib.dirty) continue;
+    lib.dirty = false;
+    const data = lib.data;
+    const name = path.basename(lib.file);
+    saving = saving.then(async () => {
+      await backupDaily(lib);
+      // Write to a temp file and rename over the original so a crash mid-write
+      // can never leave the library truncated.
+      const tmpPath = `${lib.file}.tmp`;
+      await fs.promises.writeFile(tmpPath, JSON.stringify(data));
+      await fs.promises.rename(tmpPath, lib.file);
+      console.log(`[${new Date().toISOString()}] ${name} written (${data.entries.length} entries, ${data.boards.length} boards)`);
+    }).catch(err => {
+      lib.dirty = true;
+      console.error(`Failed to write ${name}:`, err);
+    });
+  }
   return saving;
 }
 
 // Last-resort synchronous save for process exit, when async work can't finish.
 function flushSync() {
-  if (!dirty) return;
-  dirty = false;
-  fs.writeFileSync(`${DB_PATH}.tmp`, JSON.stringify(cache));
-  fs.renameSync(`${DB_PATH}.tmp`, DB_PATH);
+  for (const lib of Object.values(SPACES)) {
+    if (!lib.dirty) continue;
+    lib.dirty = false;
+    fs.writeFileSync(`${lib.file}.tmp`, JSON.stringify(lib.data));
+    fs.renameSync(`${lib.file}.tmp`, lib.file);
+  }
 }
 
-loadDB();
+Object.keys(SPACES).forEach(loadDB);
 
 // ─── Images: thumbnails + palette ────────────────────────────────────────────
 // Extension is picked from the allowlisted mimetype, never the client-supplied
@@ -255,9 +286,25 @@ app.use((req, res, next) => {
   next();
 });
 
+// Which library an API call is about: `X-Space` header, or `?space=` for plain
+// links (export downloads can't send headers). Defaults to the UI library.
+app.use('/api', (req, res, next) => {
+  const space = req.headers['x-space'] ?? req.query.space ?? 'ui';
+  if (typeof space !== 'string' || !Object.hasOwn(SPACES, space)) return res.status(400).json({ error: 'Unknown space' });
+  req.space = space;
+  next();
+});
+
 app.use(compression());
 app.use(express.json());
 app.use((req, res, next) => { req.body ??= {}; next(); }); // Express 5 leaves body undefined when none was sent
+
+// Runs the rest of the chain inside the request's space. It sits after the body
+// parsers on purpose: they call next() from a stream event, which drops the async
+// context on some Node versions if it was entered before them. multer does the
+// same, so the upload route re-binds after it.
+const bindSpace = (req, res, next) => spaceStore.run(req.space || 'ui', next);
+app.use('/api', bindSpace);
 app.use(express.static(path.join(__dirname, 'public')));
 // Filenames are UUIDs and never rewritten, so browsers can cache them forever.
 app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '365d', immutable: true }));
@@ -312,6 +359,10 @@ function cleanEntryFields(body, db, create) {
   if (has('color')) out.color = optional(body.color) === null ? null : cleanString(body.color, 'color', 50) || null;
   if (has('found_via')) out.found_via = optional(body.found_via) === null ? '' : cleanString(body.found_via, 'found_via', 100);
   if (has('favicon')) out.favicon = optional(body.favicon) === null ? null : cleanHttpUrl(body.favicon, 'favicon');
+  if (currentSpace() === 'fashion') {
+    if (has('price')) out.price = cleanString(body.price, 'price', 50);
+    if (has('brand')) out.brand = cleanString(body.brand, 'brand', 100);
+  }
   if (has('favorite')) {
     if (typeof body.favorite !== 'boolean') throw httpError(400, 'favorite must be a boolean');
     out.favorite = body.favorite;
@@ -394,6 +445,7 @@ app.post('/api/entries', (req, res) => {
     favorite: false,
     boards: [],
     date_added: new Date().toISOString(),
+    ...(currentSpace() === 'fashion' && { brand: '', price: '' }),
     ...fields
   };
 
@@ -421,7 +473,7 @@ app.put('/api/entries/:id', (req, res) => {
 });
 
 // Add a screenshot (the first one becomes the cover)
-app.post('/api/entries/:id/screenshot', upload.single('screenshot'), async (req, res) => {
+app.post('/api/entries/:id/screenshot', upload.single('screenshot'), bindSpace, async (req, res) => {
   if (!req.file) throw httpError(400, 'No file uploaded');
   const entry = await attachScreenshot(req.params.id, req.file.filename);
   res.json({ screenshot: req.file.filename, screenshots: entry.screenshots });
@@ -801,17 +853,19 @@ app.delete('/api/found-via/:name', (req, res) => {
 app.get('/api/export', (req, res) => {
   const db = readDB();
   const fmt = req.query.format || 'json';
+  const space = currentSpace();
+  const base = space === 'ui' ? 'omniview-export' : `omniview-${space}-export`;
 
   if (fmt === 'json') {
-    res.setHeader('Content-Disposition', 'attachment; filename="omniview-export.json"');
+    res.setHeader('Content-Disposition', `attachment; filename="${base}.json"`);
     res.json(db);
   } else {
     // ZIP with JSON + screenshots
-    res.setHeader('Content-Disposition', 'attachment; filename="omniview-export.zip"');
+    res.setHeader('Content-Disposition', `attachment; filename="${base}.zip"`);
     res.setHeader('Content-Type', 'application/zip');
     const archive = archiver('zip');
     archive.pipe(res);
-    archive.append(JSON.stringify(db, null, 2), { name: 'library.json' });
+    archive.append(JSON.stringify(db, null, 2), { name: path.basename(SPACES[space].file) });
     // Add screenshot files
     db.entries.forEach(e => e.screenshots.forEach(file => {
       const p = path.join(UPLOADS_DIR, file);
@@ -826,7 +880,8 @@ app.get('/api/export', (req, res) => {
 // behind when an upload succeeded but the entry was never saved.
 app.post('/api/cleanup', (req, res) => {
   const used = new Set(attaching);
-  readDB().entries.forEach(e => e.screenshots.forEach(f => used.add(f)));
+  // Uploads are shared by every space, so a file is unused only if no space's entries reference it.
+  Object.values(SPACES).forEach(lib => lib.data.entries.forEach(e => e.screenshots.forEach(f => used.add(f))));
   let removed = 0;
   let bytes = 0;
   const sweep = (dir, isUsed) => fs.readdirSync(dir, { withFileTypes: true })
@@ -845,10 +900,10 @@ app.post('/api/cleanup', (req, res) => {
 
 // ─── Reset ────────────────────────────────────────────────────────────────────
 app.post('/api/reset', (req, res) => {
-  if (req.body.confirm !== 'reset') throw httpError(400, 'Send {"confirm":"reset"} to wipe the library');
+  if (req.body.confirm !== 'reset') throw httpError(400, 'Send {"confirm":"reset"} to wipe this library');
   const db = readDB();
   db.entries.forEach(e => e.screenshots.forEach(removeFiles));
-  writeDB(JSON.parse(JSON.stringify(DEFAULT_DB)));
+  writeDB(JSON.parse(JSON.stringify(SPACES[currentSpace()].defaults)));
   res.json({ ok: true });
 });
 
@@ -872,6 +927,10 @@ app.use((err, req, res, next) => {
 
 // Generates thumbnails/palettes for screenshots saved before those existed.
 async function backfillImages() {
+  for (const space of Object.keys(SPACES)) await spaceStore.run(space, backfillSpace);
+}
+
+async function backfillSpace() {
   let changed = false;
   for (const e of readDB().entries) {
     for (const file of e.screenshots) {

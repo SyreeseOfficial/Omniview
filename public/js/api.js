@@ -1,8 +1,12 @@
 // Thin fetch wrapper. Every request carries X-Omniview: the server refuses
 // mutating requests without it, which stops other websites from calling the API.
+// X-Space says which library the call is about; a delayed call (the delete-undo
+// timer) passes the space it was made in, in case the user has switched since.
 
-async function request(method, path, body) {
-  const opts = { method, headers: { 'X-Omniview': '1' } };
+import { state } from './state.js';
+
+async function request(method, path, body, space = state.space) {
+  const opts = { method, headers: { 'X-Omniview': '1', 'X-Space': space } };
   if (body instanceof FormData) {
     opts.body = body;
   } else if (body !== undefined) {
@@ -16,8 +20,8 @@ async function request(method, path, body) {
 }
 
 export const api = {
-  get: path => request('GET', path),
-  post: (path, body = {}) => request('POST', path, body),
+  get: (path, space) => request('GET', path, undefined, space),
+  post: (path, body = {}, space) => request('POST', path, body, space),
   put: (path, body) => request('PUT', path, body),
   del: path => request('DELETE', path),
   uploadScreenshot(entryId, file) {

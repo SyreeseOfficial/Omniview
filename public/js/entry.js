@@ -25,6 +25,8 @@ export function clearFormSnapshot() { formSnapshot = null; }
 function captureFormSnapshot() {
   return JSON.stringify({
     title: $('f-title').value,
+    brand: $('f-brand').value,
+    price: $('f-price').value,
     url: $('f-url').value,
     type: comboValue('f-type'),
     color: comboValue('f-color'),
@@ -43,6 +45,8 @@ export function isFormDirty() {
 
 export function openAddForm() {
   $('f-title').value = '';
+  $('f-brand').value = '';
+  $('f-price').value = '';
   $('f-url').value = '';
   setCombo('f-type', '');
   setCombo('f-color', '');
@@ -139,7 +143,7 @@ async function autofill(url) {
     if ($('f-url').value.trim() !== url) return;
     state.pageInfo = { favicon: info.favicon, forUrl: url };
     if (info.title && !$('f-title').value.trim()) $('f-title').value = info.title;
-    if (info.themeColor && !comboValue('f-color')) setCombo('f-color', colorName(info.themeColor));
+    if (info.themeColor && state.space === 'ui' && !comboValue('f-color')) setCombo('f-color', colorName(info.themeColor));
     if (info.image && !state.pending.length) {
       state.pending.push({ url: info.image, preview: info.image });
       renderPending();
@@ -212,6 +216,7 @@ export function setupAddForm() {
         found_via: comboValue('f-found-via'),
         note: $('f-note').value.trim(),
         favorite: $('f-favorite').checked,
+        ...(state.space === 'fashion' && { brand: $('f-brand').value.trim(), price: $('f-price').value.trim() }),
         style_tags: state.formTags,
         boards: [...state.formBoards],
         force: state.allowDuplicate
@@ -292,6 +297,8 @@ let detailBaseline = '';
 function detailSnapshot() {
   return JSON.stringify({
     title: $('detail-title').value,
+    brand: $('detail-brand').value,
+    price: $('detail-price').value,
     type: comboValue('detail-type'),
     color: comboValue('detail-color'),
     foundVia: comboValue('detail-found-via'),
@@ -429,6 +436,7 @@ export function setupDetailModal() {
       found_via: comboValue('detail-found-via'),
       note: $('detail-note').value.trim(),
       favorite: state.detailEntry.favorite,
+      ...(state.space === 'fashion' && { brand: $('detail-brand').value.trim(), price: $('detail-price').value.trim() }),
       style_tags: state.detailTags,
       boards: [...state.detailBoards]
     };
@@ -483,6 +491,8 @@ function loadDetail(entry) {
   $('detail-fav').classList.toggle('is-fav', !!entry.favorite);
   $('detail-fav').setAttribute('aria-pressed', String(!!entry.favorite));
   $('detail-title').value = entry.title;
+  $('detail-brand').value = entry.brand || '';
+  $('detail-price').value = entry.price || '';
   setCombo('detail-type', entry.type || '');
   setCombo('detail-color', entry.color || '');
   setCombo('detail-found-via', entry.found_via);

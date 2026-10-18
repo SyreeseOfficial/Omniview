@@ -1305,3 +1305,50 @@ body.file-drag::after {
   }
   .spinner { animation-duration: 1.5s !important; animation-iteration-count: infinite !important; } /* progress indicator, not decoration */
 }
+
+/* ─── Spaces (UI / Fashion) ─────────────────────────────────── */
+/* <html data-space> is set by main.js; these hide what belongs to the other space. */
+html[data-space="ui"] .fashion-only,
+html[data-space="fashion"] .ui-only { display: none !important; }
+
+/* Fashion gets its own accent so it is obvious which library you are in. */
+html[data-space="fashion"][data-theme="dark"] {
+  --accent: #e0a96d;
+  --accent-dim: rgba(224,169,109,.15);
+  --accent-2: #f0c987;
+}
+html[data-space="fashion"][data-theme="light"] {
+  --accent: #b8691f;
+  --accent-dim: rgba(184,105,31,.1);
+  --accent-2: #d97706;
+}
+
+.space-switch {
+  display: flex;
+  gap: .25rem;
+  margin: .75rem .6rem 0;
+  padding: .2rem;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.sidebar.collapsed .space-switch { flex-direction: column; }
+.space-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .4rem;
+  padding: .4rem .5rem;
+  border-radius: var(--radius-xs);
+  color: var(--text-2);
+  font-size: .8rem;
+  font-weight: 500;
+  transition: background .13s, color .13s, gap .22s ease;
+}
+.space-btn svg { flex-shrink: 0; opacity: .8; }
+.space-btn:hover { color: var(--text); }
+.space-btn.active { background: var(--bg-2); color: var(--accent); box-shadow: 0 1px 2px rgba(0,0,0,.18); }
+.sidebar.collapsed .space-btn { gap: 0; }
+
+.card-meta { font-size: .75rem; color: var(--text-2); margin-bottom: .3rem; }

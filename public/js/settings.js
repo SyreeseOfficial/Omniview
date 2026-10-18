@@ -1,7 +1,7 @@
 // Settings view: managed option lists (tags with merge/bulk delete, types,
 // found-via), storage cleanup, and factory reset.
 
-import { state, byName } from './state.js';
+import { state, byName, SPACES } from './state.js';
 import { api } from './api.js';
 import { confirm_, prompt_, toastSuccess, toastError } from './modals.js';
 import {
@@ -51,7 +51,7 @@ export function setupSettings() {
   });
 
   $('reset-btn').addEventListener('click', () => {
-    confirm_('Factory reset? ALL entries, boards, and tags will be permanently deleted. This cannot be undone.', async () => {
+    confirm_(`Factory reset the ${SPACES[state.space]} library? ALL its entries, boards, and tags will be permanently deleted. The other library is not touched. This cannot be undone.`, async () => {
       try {
         await api.post('/api/reset', { confirm: 'reset' });
       } catch (err) { toastError(err.message); return; }
