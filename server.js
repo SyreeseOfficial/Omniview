@@ -596,12 +596,31 @@ function attrs(tag) {
   return out;
 }
 
+// The first schema.org Product (or ProductGroup) in the page's JSON-LD, if any.
+// Scans the whole document: shop pages often put it far past the <head>.
+function productNode(html) {
+  let found = null;
+  const walk = n => {
+    if (found || !n || typeof n !== 'object') return;
+    if (Array.isArray(n)) return n.forEach(walk);
+    if ([].concat(n['@type'] || []).some(t => /^Product(Group)?$/.test(t))) { found = n; return; }
+    walk(n['@graph']);
+  };
+  for (const m of html.matchAll(/<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    try { walk(JSON.parse(m[1])); } catch { /* malformed JSON-LD is common; skip it */ }
+    if (found) break;
+  }
+  return found;
+}
+
 function pageInfo(html, baseUrl) {
   const meta = {};
+  const ogImages = [];
   for (const [tag] of html.matchAll(/<meta\b[^>]*>/gi)) {
     const a = attrs(tag);
     const key = (a.property || a.name || '').toLowerCase();
     if (key && a.content !== undefined && !(key in meta)) meta[key] = a.content.trim();
+    if (/^(og|twitter):image(:url)?$/.test(key) && a.content) ogImages.push(a.content.trim());
   }
   const abs = href => {
     try {
@@ -616,11 +635,34 @@ function pageInfo(html, baseUrl) {
   }
   const titleTag = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
   const theme = (meta['theme-color'] || '').match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+
+  const product = productNode(html) || {};
+  const text = v => (typeof v === 'string' ? v : v && typeof v.name === 'string' ? v.name : '').replace(/\s+/g, ' ').trim().slice(0, 100);
+  const first = v => [].concat(v ?? [])[0];
+  const offer = first(product.offers) || first(first(product.hasVariant)?.offers) || {};
+  const rawPrice = offer.price ?? offer.lowPrice ?? offer.priceSpecification?.price ?? meta['og:price:amount'] ?? meta['product:price:amount'];
+  const price = Number(rawPrice);
+  // JSON-LD image URLs are sloppy ("https:files/x.jpg"); only take ones that are clearly URLs.
+  const ldImages = [].concat(product.image ?? []).map(i => (typeof i === 'string' ? i : i?.url)).filter(i => /^(https?:)?\/\//.test(i) || /^\/[^/]/.test(i));
+  // Same picture often appears as http/https or with different ?v= params; keep the first.
+  const seen = new Set();
+  const images = [...ogImages, ...ldImages].map(abs).filter(u => {
+    const key = u && u.replace(/^https?:/, '').split('?')[0];
+    return key && !seen.has(key) && seen.add(key);
+  }).slice(0, 8);
+
   return {
     title: (meta['og:title'] || meta['twitter:title'] || (titleTag ? decodeEntities(titleTag[1]) : '')).replace(/\s+/g, ' ').trim().slice(0, 300),
-    image: abs(meta['og:image'] || meta['twitter:image'] || '') || null,
+    image: images[0] || null,
+    images,
     favicon: favicon || abs('/favicon.ico'),
-    themeColor: theme ? '#' + (theme[1].length === 3 ? [...theme[1]].map(c => c + c).join('') : theme[1]).toLowerCase() : null
+    themeColor: theme ? '#' + (theme[1].length === 3 ? [...theme[1]].map(c => c + c).join('') : theme[1]).toLowerCase() : null,
+    brand: text(product.brand) || null,
+    siteName: text(meta['og:site_name']) || null,
+    price: rawPrice !== '' && rawPrice != null && Number.isFinite(price) && price > 0 ? String(+price.toFixed(2)) : null,
+    currency: text(offer.priceCurrency || meta['og:price:currency'] || meta['product:price:currency']) || null,
+    color: text(product.color) || null,
+    category: text(product.category) || null
   };
 }
 
@@ -628,7 +670,7 @@ app.get('/api/unfurl', async (req, res) => {
   const url = cleanHttpUrl(typeof req.query.url === 'string' ? req.query.url : '', 'url');
   let page;
   try {
-    page = await fetchCapped(url, { maxBytes: 1024 * 1024, truncate: true });
+    page = await fetchCapped(url, { maxBytes: 4 * 1024 * 1024, truncate: true });
   } catch (err) {
     throw err.status ? err : httpError(502, 'Could not reach that site');
   }

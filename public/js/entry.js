@@ -1,7 +1,8 @@
 // The Add Entry form (auto-fill, duplicate check, screenshot queue) and the
 // entry detail modal (screenshot carousel, palette, prev/next, save).
 
-import { state, safeHref, isHttpUrl, faviconImg, colorName } from './state.js';
+import { state, safeHref, isHttpUrl, faviconImg, colorName, COLOR_NAMES } from './state.js';
+import { guessFashionFields } from './autofill.js';
 import { api } from './api.js';
 import {
   confirm_, toastSuccess, toastError, openModalOverlay, closeModalOverlay, isOpen, openLightbox, setLightboxSrc
@@ -25,7 +26,7 @@ export function clearFormSnapshot() { formSnapshot = null; }
 function captureFormSnapshot() {
   return JSON.stringify({
     title: $('f-title').value,
-    brand: $('f-brand').value,
+    brand: comboValue('f-brand'),
     price: $('f-price').value,
     url: $('f-url').value,
     type: comboValue('f-type'),
@@ -45,7 +46,7 @@ export function isFormDirty() {
 
 export function openAddForm() {
   $('f-title').value = '';
-  $('f-brand').value = '';
+  setCombo('f-brand', '');
   $('f-price').value = '';
   $('f-url').value = '';
   setCombo('f-type', '');
@@ -55,6 +56,7 @@ export function openAddForm() {
   $('f-favorite').checked = false;
   showDuplicate(null);
   $('unfurl-status').style.display = 'none';
+  clearAutofillUi();
   lastCheckedUrl = '';
   state.pageInfo = null;
   state.allowDuplicate = false;
@@ -132,23 +134,84 @@ async function checkDuplicate(url) {
   } catch { /* the save itself re-checks */ }
 }
 
-// Fills title, color (from the page's theme-color), favicon, and the og:image as
-// a queued screenshot — only into fields/slots the user hasn't already used.
+// Highlights a field the auto-fill filled until the user touches it.
+function markAutofilled(id) {
+  const group = $(id).closest('.form-group');
+  group.classList.add('autofilled');
+  const clear = () => group.classList.remove('autofilled');
+  group.addEventListener('input', clear, { once: true });
+  group.addEventListener('click', clear, { once: true });
+}
+
+function clearAutofillUi() {
+  document.querySelectorAll('#entry-form .autofilled').forEach(el => el.classList.remove('autofilled'));
+  $('unfurl-images').style.display = 'none';
+  $('unfurl-images').innerHTML = '';
+}
+
+// Other images found on the page, as thumbnails to click into the screenshot queue.
+function renderCandidateImages(images) {
+  const box = $('unfurl-images');
+  box.innerHTML = '';
+  images.forEach(src => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.title = 'Add this image';
+    const img = document.createElement('img');
+    img.src = src;
+    img.alt = 'Image from the page';
+    img.addEventListener('error', () => btn.remove());
+    btn.appendChild(img);
+    btn.addEventListener('click', () => {
+      if (state.pending.length >= MAX_SCREENSHOTS) return toastError(`At most ${MAX_SCREENSHOTS} screenshots per entry.`);
+      state.pending.push({ url: src, preview: src });
+      renderPending();
+      btn.remove();
+    });
+    box.appendChild(btn);
+  });
+  box.style.display = images.length ? '' : 'none';
+}
+
+// Fills title, favicon, and the page's images as queued screenshots. In the UI
+// space it also takes the theme-color; in Fashion it takes brand, price, type
+// and color. Only fills fields/slots the user hasn't already used.
 async function autofill(url) {
   const status = $('unfurl-status');
   status.style.display = '';
   status.textContent = 'Fetching page info…';
+  clearAutofillUi();
   try {
     const info = await api.get(`/api/unfurl?url=${encodeURIComponent(url)}`);
     if ($('f-url').value.trim() !== url) return;
     state.pageInfo = { favicon: info.favicon, forUrl: url };
-    if (info.title && !$('f-title').value.trim()) $('f-title').value = info.title;
-    if (info.themeColor && state.space === 'ui' && !comboValue('f-color')) setCombo('f-color', colorName(info.themeColor));
-    if (info.image && !state.pending.length) {
-      state.pending.push({ url: info.image, preview: info.image });
-      renderPending();
+    const filled = [];
+    const fill = (label, id, value, isCombo) => {
+      if (!value) return;
+      if (isCombo ? comboValue(id) : $(id).value.trim()) return;
+      if (isCombo) setCombo(id, value); else $(id).value = value;
+      markAutofilled(id);
+      filled.push(label);
+    };
+    fill('title', 'f-title', info.title);
+    if (state.space === 'ui') {
+      if (info.themeColor) fill('color', 'f-color', colorName(info.themeColor), true);
+    } else {
+      const guess = guessFashionFields(info, url, { entries: state.entries, types: state.types, colors: COLOR_NAMES });
+      fill('brand', 'f-brand', guess.brand, true);
+      fill('price', 'f-price', guess.price);
+      fill('type', 'f-type', guess.type, true);
+      fill('color', 'f-color', guess.color, true);
     }
-    status.textContent = 'Filled in from the page.';
+    const images = info.images || [];
+    const queueFirst = images.length && !state.pending.length;
+    if (queueFirst) {
+      state.pending.push({ url: images[0], preview: images[0] });
+      renderPending();
+      filled.push('image');
+    }
+    renderCandidateImages(queueFirst ? images.slice(1) : images);
+    status.textContent = filled.length ? `Filled: ${filled.join(', ')}.` : 'Nothing new to fill in.';
   } catch (err) {
     if ($('f-url').value.trim() === url) status.textContent = `Couldn't read the page (${err.message}).`;
   }
@@ -161,6 +224,7 @@ function onUrlEntered() {
   state.allowDuplicate = false;
   showDuplicate(null);
   $('unfurl-status').style.display = 'none';
+  clearAutofillUi();
   if (!isHttpUrl(url)) return;
   checkDuplicate(url);
   autofill(url);
@@ -216,7 +280,7 @@ export function setupAddForm() {
         found_via: comboValue('f-found-via'),
         note: $('f-note').value.trim(),
         favorite: $('f-favorite').checked,
-        ...(state.space === 'fashion' && { brand: $('f-brand').value.trim(), price: $('f-price').value.trim() }),
+        ...(state.space === 'fashion' && { brand: comboValue('f-brand'), price: $('f-price').value.trim() }),
         style_tags: state.formTags,
         boards: [...state.formBoards],
         force: state.allowDuplicate
@@ -297,7 +361,7 @@ let detailBaseline = '';
 function detailSnapshot() {
   return JSON.stringify({
     title: $('detail-title').value,
-    brand: $('detail-brand').value,
+    brand: comboValue('detail-brand'),
     price: $('detail-price').value,
     type: comboValue('detail-type'),
     color: comboValue('detail-color'),
@@ -436,7 +500,7 @@ export function setupDetailModal() {
       found_via: comboValue('detail-found-via'),
       note: $('detail-note').value.trim(),
       favorite: state.detailEntry.favorite,
-      ...(state.space === 'fashion' && { brand: $('detail-brand').value.trim(), price: $('detail-price').value.trim() }),
+      ...(state.space === 'fashion' && { brand: comboValue('detail-brand'), price: $('detail-price').value.trim() }),
       style_tags: state.detailTags,
       boards: [...state.detailBoards]
     };
@@ -491,7 +555,7 @@ function loadDetail(entry) {
   $('detail-fav').classList.toggle('is-fav', !!entry.favorite);
   $('detail-fav').setAttribute('aria-pressed', String(!!entry.favorite));
   $('detail-title').value = entry.title;
-  $('detail-brand').value = entry.brand || '';
+  setCombo('detail-brand', entry.brand || '');
   $('detail-price').value = entry.price || '';
   setCombo('detail-type', entry.type || '');
   setCombo('detail-color', entry.color || '');

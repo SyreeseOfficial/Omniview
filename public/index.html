@@ -298,6 +298,7 @@
             <button type="button" class="link-btn" id="dupe-add">Add anyway</button>
           </div>
           <div class="unfurl-status" id="unfurl-status" style="display:none" aria-live="polite"></div>
+          <div class="unfurl-images" id="unfurl-images" style="display:none"></div>
         </div>
 
         <div class="form-group form-group-full">
@@ -307,7 +308,7 @@
 
         <div class="form-group fashion-only">
           <label for="f-brand">Brand</label>
-          <input type="text" id="f-brand" maxlength="100" placeholder="e.g. Acme">
+          <div class="combo" id="f-brand"></div>
         </div>
 
         <div class="form-group fashion-only">
@@ -553,7 +554,7 @@
 
         <div class="detail-field fashion-only">
           <span class="detail-label">Brand</span>
-          <input type="text" id="detail-brand" class="detail-input" maxlength="100" placeholder="e.g. Acme">
+          <div class="combo" id="detail-brand"></div>
         </div>
 
         <div class="detail-field fashion-only">

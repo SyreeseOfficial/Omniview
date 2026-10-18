@@ -1215,6 +1215,11 @@ textarea { resize: vertical; }
 .link-btn { color: var(--accent); font-size: inherit; text-decoration: underline; }
 .link-btn:hover { color: var(--accent-2); }
 .unfurl-status { font-size: .72rem; color: var(--text-3); }
+.unfurl-images { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .4rem; }
+.unfurl-images button { padding: 0; width: 56px; height: 56px; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; background: var(--bg-3); cursor: pointer; }
+.unfurl-images button:hover { border-color: var(--accent); }
+.unfurl-images img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.form-group.autofilled input, .form-group.autofilled .combo-field { border-color: var(--accent); }
 
 .pending-shots { display: flex; flex-wrap: wrap; gap: .6rem; padding: 1rem; width: 100%; }
 .pending-shot { position: relative; width: 112px; height: 76px; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); background: var(--bg-3); }

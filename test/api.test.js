@@ -316,8 +316,33 @@ test('unfurl reads title, image, favicon and theme color from a page', async () 
   try {
     const res = await call('GET', `/api/unfurl?url=${encodeURIComponent(origin)}`);
     assert.equal(res.status, 200);
-    assert.deepEqual(res.body, { title: 'Fish & Chips', image: `${origin}/hero.png`, favicon: `${origin}/fav.svg`, themeColor: '#aabbcc' });
+    assert.deepEqual(res.body, {
+      title: 'Fish & Chips', image: `${origin}/hero.png`, images: [`${origin}/hero.png`], favicon: `${origin}/fav.svg`, themeColor: '#aabbcc',
+      brand: null, siteName: null, price: null, currency: null, color: null, category: null
+    });
     assert.equal((await call('GET', '/api/unfurl?url=javascript:alert(1)')).status, 400);
+  } finally {
+    site.close();
+  }
+});
+
+test('unfurl reads product details from JSON-LD, even far into a big page', async () => {
+  const ld = { '@context': 'https://schema.org', '@graph': [{ '@type': 'ProductGroup', name: 'Vest', brand: { '@type': 'Brand', name: 'Acme' }, color: 'Dark Green', category: 'Vests',
+    image: ['https:files/broken.jpg', '/a.jpg', { url: 'https://cdn.example/b.jpg' }],
+    hasVariant: [{ '@type': 'Product', offers: [{ price: '59.90', priceCurrency: 'USD' }] }] }] };
+  const site = http.createServer((req, res) => {
+    res.setHeader('Content-Type', 'text/html');
+    res.end('<html><head><meta property="og:image" content="/og.jpg"><meta property="og:site_name" content="Acme Co."></head><body>' +
+      '<!--' + 'x'.repeat(1.5 * 1024 * 1024) + '-->' +
+      `<script type="application/ld+json">${JSON.stringify(ld)}</script></body></html>`);
+  });
+  await new Promise(r => site.listen(0, '127.0.0.1', r));
+  const origin = `http://127.0.0.1:${site.address().port}`;
+  try {
+    const { body } = await call('GET', `/api/unfurl?url=${encodeURIComponent(origin)}`);
+    assert.deepEqual({ brand: body.brand, siteName: body.siteName, price: body.price, currency: body.currency, color: body.color, category: body.category },
+      { brand: 'Acme', siteName: 'Acme Co.', price: '59.9', currency: 'USD', color: 'Dark Green', category: 'Vests' });
+    assert.deepEqual(body.images, [`${origin}/og.jpg`, `${origin}/a.jpg`, 'https://cdn.example/b.jpg']);
   } finally {
     site.close();
   }

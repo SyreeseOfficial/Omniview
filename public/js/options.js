@@ -30,7 +30,14 @@ const COMBO_KINDS = {
     remove: deleteFoundViaOption,
     usage: name => state.entries.filter(e => e.found_via === name).length
   },
-  color: { getOptions: () => COLOR_NAMES }
+  color: { getOptions: () => COLOR_NAMES },
+  // Brands are free text on entries, so the list is whatever entries already use.
+  // ponytail: no remove/rename — a brand disappears once no entry uses it.
+  brand: {
+    getOptions: () => [...new Set(state.entries.map(e => e.brand).filter(Boolean))],
+    promptLabel: 'New brand name:',
+    add: async () => {}
+  }
 };
 
 export const typeUsage = COMBO_KINDS.type.usage;
@@ -42,6 +49,7 @@ export function setupCombos() {
   ['f-type', 'detail-type'].forEach(id => initCombo(id, 'type'));
   ['f-color', 'detail-color'].forEach(id => initCombo(id, 'color'));
   ['f-found-via', 'detail-found-via'].forEach(id => initCombo(id, 'foundVia'));
+  ['f-brand', 'detail-brand'].forEach(id => initCombo(id, 'brand'));
 }
 
 function initCombo(id, kindName) {
@@ -122,6 +130,7 @@ function renderComboList(id) {
     addNew._activate = () => {
       closeCombo(id);
       prompt_(c.kind.promptLabel, '', async name => {
+        name = name && name.trim();
         if (!name) return;
         await c.kind.add(name);
         setCombo(id, name);
