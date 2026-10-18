@@ -48,7 +48,8 @@ export function guessFashionFields(info, url, { entries, types, colors }) {
   // Don't let the brand read as a color or type ("Red Wing").
   const scrub = s => (brand && s ? s.replace(new RegExp(escapeRe(brand), 'gi'), ' ') : s);
   const sources = first => [first, scrub(info.title), scrub(path)];
-  const price = info.price && (!info.currency || info.currency === 'USD' ? info.price : `${info.currency} ${info.price}`);
+  const whole = info.price && Math.round(Number(info.price)); // whole dollars: $49.99 -> $50
+  const price = whole && (!info.currency || info.currency === 'USD' ? whole : `${info.currency} ${whole}`);
   return {
     brand,
     price: price || '',
