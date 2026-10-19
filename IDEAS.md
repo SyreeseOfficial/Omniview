@@ -32,28 +32,11 @@ All items from this section are under **Completed** or **Skipped** at the bottom
 
 ## 6. Tags & managed lists
 
-- [ ] **[M]** Suggest tags from the image: derive `Dark Mode` / `Light Mode` / `Monochrome` / `Colorful` from the stored palette lightness and saturation, offered as one-click chips in the form (never auto-applied).
-- [ ] **[M]** "Delete unused tags" button in Settings (usage is already computed by `tagUsage`).
-- [ ] **[L]** Tag colors, shown on pills in cards and the filter.
-- [ ] **[L]** Drag one tag onto another in Settings to merge (the multi-select merge exists).
-- [ ] **[L]** Reorder types and found-via lists manually instead of alphabetical only.
-- [ ] **[L]** Tag aliases: typing `dark` suggests `Dark Mode`; typing `mono` suggests `Monochrome`.
-- [ ] **[L]** Export / import the tag, type and found-via lists as a template file, so a new space or machine starts with your taxonomy.
-- [ ] **[L]** Warn when creating a near-duplicate tag (`Minimalist` vs `Minimal`, plural vs singular) before it lands.
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ## 7. Visual polish
 
-- [ ] **[H]** Add a favicon. `index.html` has no `<link rel="icon">`, so every load requests `/favicon.ico` and gets a 404. Reuse the sidebar brand-mark SVG (inline `data:` link is enough), with an accent variant for fashion.
-- [ ] **[M]** `color-scheme: dark light` (CSS + `<meta name="color-scheme">`) so native scrollbars, selects and form controls match the theme. Neither appears in `styles.css` or `index.html`.
-- [ ] **[M]** Use the cover's first palette color as the card background while the thumbnail loads. No flash of empty gray, no extra data.
-- [ ] **[M]** "System" theme option that follows `prefers-color-scheme` live, alongside Dark and Light.
-- [ ] **[L]** Hover-to-scroll on tall screenshots in a card (long landing pages slowly scroll inside the card, Dribbble-style).
-- [ ] **[L]** Skeleton cards instead of the spinner on first load.
-- [ ] **[L]** View Transitions API (`document.startViewTransition`) for card → detail and view switches; degrades to nothing where unsupported.
-- [ ] **[L]** User-pickable accent color in Settings (fashion already has its own).
-- [ ] **[L]** Compact list density toggle for the list layout.
-- [ ] **[L]** Print stylesheet so a board prints as a clean contact sheet.
-- [ ] **[L]** Cap stacked toasts at 3 and collapse repeats, so a bulk failure doesn't paint the screen.
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ## 8. Accessibility
 
@@ -246,6 +229,17 @@ Already listed there, but I'd move them up:
 - [x] **[M]** Manual ordering of entries inside a board (drag to arrange) for mood-board feel.
 - [x] **[L]** Board accent color or emoji for quick scanning in the picker and sidebar.
 - [x] **[L]** "Add to board" from the card hover menu without opening the detail modal.
+- [x] **[M]** Suggest tags from the image: derive `Dark Mode` / `Light Mode` / `Monochrome` / `Colorful` from the stored palette lightness and saturation, offered as one-click chips in the form (never auto-applied).
+- [x] **[L]** Tag aliases: typing `dark` suggests `Dark Mode`; typing `mono` suggests `Monochrome`.
+- [x] **[L]** Warn when creating a near-duplicate tag (`Minimalist` vs `Minimal`, plural vs singular) before it lands.
+- [x] **[H]** Add a favicon. `index.html` has no `<link rel="icon">`, so every load requests `/favicon.ico` and gets a 404. Reuse the sidebar brand-mark SVG (inline `data:` link is enough), with an accent variant for fashion.
+- [x] **[M]** `color-scheme: dark light` (CSS + `<meta name="color-scheme">`) so native scrollbars, selects and form controls match the theme. Neither appears in `styles.css` or `index.html`.
+- [x] **[M]** "System" theme option that follows `prefers-color-scheme` live, alongside Dark and Light.
+- [x] **[L]** Skeleton cards instead of the spinner on first load.
+- [x] **[L]** View Transitions API (`document.startViewTransition`) for card → detail and view switches; degrades to nothing where unsupported.
+- [x] **[L]** User-pickable accent color in Settings (fashion already has its own).
+- [x] **[L]** Compact list density toggle for the list layout.
+- [x] **[L]** Print stylesheet so a board prints as a clean contact sheet.
 
 ## Skipped
 
@@ -281,3 +275,11 @@ Parked for now, not rejected.
 - [ ] **[L]** Duplicate a board (start the next project from the last one).
 - [ ] **[L]** Archive boards: hide finished projects from the picker without deleting.
 - [ ] **[L]** Board "contact sheet" export as PDF or one-page HTML: thumbnails, titles, URLs, palettes, notes. Different from FINDINGS' static-HTML share: this one is for printing / attaching to a brief.
+- [ ] **[M]** "Delete unused tags" button in Settings (usage is already computed by `tagUsage`).
+- [ ] **[L]** Tag colors, shown on pills in cards and the filter.
+- [ ] **[L]** Drag one tag onto another in Settings to merge (the multi-select merge exists).
+- [ ] **[L]** Reorder types and found-via lists manually instead of alphabetical only.
+- [ ] **[L]** Export / import the tag, type and found-via lists as a template file, so a new space or machine starts with your taxonomy.
+- [ ] **[M]** Use the cover's first palette color as the card background while the thumbnail loads. No flash of empty gray, no extra data.
+- [ ] **[L]** Hover-to-scroll on tall screenshots in a card (long landing pages slowly scroll inside the card, Dribbble-style).
+- [ ] **[L]** Cap stacked toasts at 3 and collapse repeats, so a bulk failure doesn't paint the screen.

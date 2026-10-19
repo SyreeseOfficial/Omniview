@@ -2,13 +2,13 @@
 // entry detail modal (screenshot carousel, palette, prev/next, save).
 
 import { state, boardLabel, safeHref, isHttpUrl, faviconImg, colorName, thumbImg, titleOf, PLACEHOLDER_SVG, COLOR_NAMES } from './state.js';
-import { moreLike, timeAgo, contrastRatio, contrastLevel } from './lib.js';
+import { moreLike, timeAgo, contrastRatio, contrastLevel, dominantColors } from './lib.js';
 import { guessFashionFields, guessFoundVia, applyCorrections, recordCorrections } from './autofill.js';
 import { api } from './api.js';
 import {
   confirm_, toastSuccess, toastError, openModalOverlay, closeModalOverlay, isOpen, openLightbox, setLightboxSrc
 } from './modals.js';
-import { comboValue, setCombo, setupTagInput, renderTagPills } from './options.js';
+import { comboValue, setCombo, setupTagInput, renderTagPills, renderTagSuggestions } from './options.js';
 import { renderBrowse, deleteEntriesWithUndo, toggleFavorite, recordRecent, focusCard } from './browse.js';
 import { navigate } from './main.js';
 
@@ -134,7 +134,25 @@ export function addPendingFiles(files) {
   renderPending();
 }
 
+// Palette of the first queued file, for the tag suggestions (UI space only; URL images can't be read cross-origin).
+let formPalette = [];
+async function updateFormPalette() {
+  const file = state.space === 'ui' && (state.pending.find(p => p.file) || {}).file;
+  formPalette = [];
+  if (file) {
+    try {
+      const bmp = await createImageBitmap(file);
+      const ctx = new OffscreenCanvas(48, 48).getContext('2d');
+      ctx.drawImage(bmp, 0, 0, 48, 48);
+      bmp.close();
+      if ((state.pending.find(p => p.file) || {}).file === file) formPalette = dominantColors(ctx.getImageData(0, 0, 48, 48).data);
+    } catch { /* undecodable: no suggestions */ }
+  }
+  renderFormTagPills();
+}
+
 function renderPending() {
+  updateFormPalette();
   const box = $('pending-shots');
   box.innerHTML = '';
   box.style.display = state.pending.length ? '' : 'none';
@@ -432,6 +450,7 @@ export function renderFormTagPills() {
     if (i !== -1) state.formTags.splice(i, 1);
     renderFormTagPills();
   });
+  renderTagSuggestions($('tag-suggest'), formPalette, state.formTags, renderFormTagPills);
 }
 
 // A row of toggle chips, one per board, bound to a Set of selected board ids.
@@ -762,4 +781,5 @@ export function renderDetailTagPills() {
     if (i !== -1) state.detailTags.splice(i, 1);
     renderDetailTagPills();
   });
+  renderTagSuggestions($('detail-tag-suggest'), state.detailEntry ? state.detailEntry.palette : [], state.detailTags, renderDetailTagPills);
 }

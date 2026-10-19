@@ -1,10 +1,10 @@
 // Entry point: boots the app and owns navigation, theme, the sidebar, global
 // keyboard shortcuts, and paste / drag-and-drop of images.
 
-import { state, SPACES, isHttpUrl } from './state.js';
+import { state, SPACES, isHttpUrl, spaceKey } from './state.js';
 import { api } from './api.js';
 import {
-  isOpen, confirm_, toastError, setupConfirmModal, setupPromptModal, setupLightbox, closeLightbox
+  isOpen, confirm_, toastError, setupConfirmModal, setupPromptModal, setupLightbox, closeLightbox, withTransition
 } from './modals.js';
 import { setupCombos } from './options.js';
 import {
@@ -112,7 +112,7 @@ function setupNav() {
   document.querySelectorAll('[data-view]').forEach(el => {
     el.addEventListener('click', e => {
       e.preventDefault();
-      navigate(el.dataset.view);
+      withTransition(() => navigate(el.dataset.view));
     });
   });
 }
@@ -169,6 +169,7 @@ function applySpaceUI() {
   // Plain links can't send the X-Space header, so the export links carry it in the URL.
   $('export-json').href = `/api/export?format=json&space=${state.space}`;
   $('export-zip').href = `/api/export?format=zip&space=${state.space}`;
+  applyAccent();
 }
 
 function setupSpaceSwitch() {
@@ -205,22 +206,57 @@ async function doSwitchSpace(next) {
 }
 
 // ═══════════════════════════════════════════ THEME ══
+// The stored preference is 'dark', 'light' or 'system'; <html data-theme> always holds
+// the resolved dark/light that the CSS keys on.
+const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
+const storedTheme = () => { try { return localStorage.getItem('omniview-theme'); } catch { return null; } };
+
 function setupTheme() {
-  const root = document.documentElement;
-  setTheme(localStorage.getItem('omniview-theme') || 'dark');
+  setTheme(storedTheme() || 'dark');
+  systemDark.addEventListener('change', () => { if (storedTheme() === 'system') setTheme('system'); });
 
   $('theme-toggle').addEventListener('click', () => {
-    setTheme(root.dataset.theme === 'dark' ? 'light' : 'dark');
+    setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
   });
   document.querySelectorAll('.theme-btn').forEach(btn => {
     btn.addEventListener('click', () => setTheme(btn.dataset.t));
   });
+
+  $('accent-input').addEventListener('input', e => {
+    try { localStorage.setItem(spaceKey('omniview-accent'), e.target.value); } catch { /* storage unavailable */ }
+    applyAccent();
+  });
+  $('accent-reset').addEventListener('click', () => {
+    try { localStorage.removeItem(spaceKey('omniview-accent')); } catch { /* storage unavailable */ }
+    applyAccent();
+  });
 }
 
-function setTheme(t) {
-  document.documentElement.dataset.theme = t;
-  localStorage.setItem('omniview-theme', t);
-  document.querySelectorAll('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.t === t));
+function setTheme(pref) {
+  document.documentElement.dataset.theme = pref === 'system' ? (systemDark.matches ? 'dark' : 'light') : pref;
+  document.documentElement.dataset.themePref = pref;
+  try { localStorage.setItem('omniview-theme', pref); } catch { /* storage unavailable */ }
+  document.querySelectorAll('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.t === pref));
+  applyAccent();
+}
+
+// A user-picked accent (kept per library) overrides the theme's; clearing it falls back to the
+// theme/library default. The tab icon follows whatever accent is showing.
+export function applyAccent() {
+  const root = document.documentElement;
+  let custom = null;
+  try { custom = localStorage.getItem(spaceKey('omniview-accent')); } catch { /* storage unavailable */ }
+  if (custom && /^#[0-9a-f]{6}$/i.test(custom)) {
+    root.style.setProperty('--accent', custom);
+    root.style.setProperty('--accent-dim', `color-mix(in srgb, ${custom} 15%, transparent)`);
+  } else {
+    root.style.removeProperty('--accent');
+    root.style.removeProperty('--accent-dim');
+  }
+  const accent = getComputedStyle(root).getPropertyValue('--accent').trim() || '#8b7cf8';
+  $('accent-input').value = accent;
+  $('favicon').href = 'data:image/svg+xml,' + encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22 22" fill="${accent}"><rect x="1" y="1" width="9" height="9" rx="2" opacity=".9"/><rect x="12" y="1" width="9" height="5" rx="2" opacity=".6"/><rect x="12" y="8" width="9" height="3" rx="1.5" opacity=".4"/><rect x="1" y="12" width="9" height="9" rx="2" opacity=".5"/><rect x="12" y="13" width="9" height="8" rx="2" opacity=".75"/></svg>`);
 }
 
 // ═══════════════════════════════════════════ SIDEBAR COLLAPSE ══

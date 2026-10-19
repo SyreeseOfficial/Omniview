@@ -75,3 +75,81 @@ export function orderEntries(entries, order) {
   const rank = new Map(order.map((id, i) => [id, i]));
   return [...entries].sort((a, b) => (rank.get(a.id) ?? order.length) - (rank.get(b.id) ?? order.length));
 }
+
+// ─── Tag suggestions, aliases, near-duplicates ───────────────────────────────
+const hsl = hex => {
+  const [r, g, b] = rgb(hex).map(v => v / 255);
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min, l = (max + min) / 2;
+  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  const h = d === 0 ? 0 : (max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4) * 60;
+  return { h, s, l, chroma: d };
+};
+
+// Style-tag names a palette (dominant color first) points to. Only ever offered, never applied.
+export function suggestTags(palette) {
+  if (!palette.length) return [];
+  const colors = palette.map(hsl);
+  const out = [];
+  if (colors[0].l < 0.25) out.push('Dark Mode');
+  else if (colors[0].l > 0.75) out.push('Light Mode');
+  if (colors.every(c => c.chroma < 0.08)) out.push('Monochrome');
+  // Colorful: at least three clearly saturated colors that are not all the same hue.
+  const vivid = colors.filter(c => c.s > 0.4 && c.l > 0.15 && c.l < 0.9);
+  if (vivid.length >= 3 && Math.max(...vivid.map(c => c.h)) - Math.min(...vivid.map(c => c.h)) > 60) out.push('Colorful');
+  return out;
+}
+
+// Up to 5 dominant colors (#rrggbb) of RGBA pixel data, like the server's extractPalette (4-bit buckets).
+export function dominantColors(rgba) {
+  const buckets = new Map();
+  for (let i = 0; i < rgba.length; i += 4) {
+    if (rgba[i + 3] < 128) continue;
+    const key = ((rgba[i] >> 4) << 8) | ((rgba[i + 1] >> 4) << 4) | (rgba[i + 2] >> 4);
+    const b = buckets.get(key) || { n: 0, c: [0, 0, 0] };
+    b.n++; for (let k = 0; k < 3; k++) b.c[k] += rgba[i + k];
+    buckets.set(key, b);
+  }
+  const picked = [];
+  for (const b of [...buckets.values()].sort((x, y) => y.n - x.n)) {
+    const c = b.c.map(v => v / b.n);
+    if (picked.every(p => Math.hypot(p[0] - c[0], p[1] - c[1], p[2] - c[2]) > 48)) picked.push(c);
+    if (picked.length === 5) break;
+  }
+  return picked.map(c => '#' + c.map(v => Math.round(v).toString(16).padStart(2, '0')).join(''));
+}
+
+// Words that should lead to a tag even though they aren't part of its name.
+export const TAG_ALIASES = {
+  'Dark Mode': ['dark', 'night', 'black'],
+  'Light Mode': ['light', 'bright', 'white'],
+  Monochrome: ['mono', 'bw', 'grayscale', 'greyscale'],
+  Minimal: ['minimalist', 'simple'],
+  Colorful: ['color', 'colour', 'vibrant', 'rainbow'],
+  Gradient: ['gradients', 'ombre'],
+  Typographic: ['type', 'typography', 'font'],
+  Retro: ['vintage', 'old school'],
+  Futuristic: ['future', 'scifi', 'sci-fi'],
+  Bold: ['loud', 'strong'],
+  Muted: ['pastel', 'soft']
+};
+
+// Does `tag` answer to the typed text `q` (its name, or a word listed as an alias)?
+export const tagMatches = (tag, q, aliases = TAG_ALIASES) => {
+  q = q.trim().toLowerCase();
+  return !q || tag.toLowerCase().includes(q) || (aliases[tag] || []).some(a => a.startsWith(q));
+};
+
+const stem = s => s.toLowerCase().replace(/[^a-z0-9]/g, '').replace(/(ies|y)$/, 'i').replace(/(es|s)$/, '');
+
+// An existing tag that is nearly the same as `name` (plural, a prefix like Minimal/Minimalist, a one-letter typo), or null.
+export function similarTag(name, tags) {
+  const a = stem(name);
+  if (!a) return null;
+  return tags.find(t => {
+    const b = stem(t);
+    if (a === b) return true;
+    const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+    if (short.length >= 4 && long.startsWith(short) && long.length - short.length <= 4) return true;
+    return short.length >= 5 && long.length === short.length && [...short].filter((c, i) => c !== long[i]).length === 1;
+  }) || null;
+}

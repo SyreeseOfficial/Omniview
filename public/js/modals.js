@@ -43,6 +43,13 @@ export function showToast(message, opts = {}) {
 export function toastSuccess(message) { showToast(message, { type: 'success' }); }
 export function toastError(message) { showToast(message, { type: 'error', duration: 5000 }); }
 
+// Runs a DOM update inside a view transition (a short cross-fade) where the browser has them.
+// The update runs a frame late there, so only wrap calls nothing else depends on synchronously.
+export function withTransition(update) {
+  if (!document.startViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return update();
+  document.startViewTransition(update);
+}
+
 // ─── Modal a11y (focus trap + return) ────────────────────────────────────────
 // Tracks nested overlays (e.g. the confirm modal opening on top of the detail
 // modal) so closing the inner one restores focus to the outer one, not the page.

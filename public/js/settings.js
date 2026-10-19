@@ -9,6 +9,7 @@ import {
   renameTagOption, deleteTagOption, renameTypeOption, deleteTypeOption, renameFoundViaOption, deleteFoundViaOption,
   afterTagsChanged
 } from './options.js';
+import { similarTag } from './lib.js';
 import { renderBrowse } from './browse.js';
 import { loadAll } from './main.js';
 
@@ -22,13 +23,18 @@ export function setupSettings() {
     const input = $('new-tag-input');
     const name = input.value.trim();
     if (!name) return;
-    try {
-      const res = await api.post('/api/tags', { name });
-      state.tags = res.tags;
-      input.value = '';
-      renderTagList();
-      renderBrowse();
-    } catch (err) { toastError(err.message); }
+    const create = async () => {
+      try {
+        const res = await api.post('/api/tags', { name });
+        state.tags = res.tags;
+        input.value = '';
+        renderTagList();
+        renderBrowse();
+      } catch (err) { toastError(err.message); }
+    };
+    const near = state.tags.some(t => t.toLowerCase() === name.toLowerCase()) ? null : similarTag(name, state.tags);
+    if (near) confirm_(`"${name}" looks like your existing tag "${near}". Create it anyway?`, create, 'Create anyway');
+    else create();
   });
   $('new-tag-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') $('add-tag-btn').click();
@@ -67,7 +73,7 @@ export function renderSettings() {
   renderTypeList();
   renderFoundViaList();
   // Sync theme buttons
-  const t = document.documentElement.dataset.theme;
+  const t = document.documentElement.dataset.themePref;
   document.querySelectorAll('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.t === t));
 }
 

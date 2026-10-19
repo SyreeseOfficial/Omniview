@@ -7,7 +7,7 @@ import {
 } from './state.js';
 import { api } from './api.js';
 import { inAddedRange } from './lib.js';
-import { confirm_, toastSuccess, toastError, showToast } from './modals.js';
+import { confirm_, toastSuccess, toastError, showToast, withTransition } from './modals.js';
 import { openDetail } from './entry.js';
 import { removeEntryFromBoard, reorderInBoard, renderSidebarBoards } from './boards.js';
 import { switchSpace } from './main.js';
@@ -69,6 +69,13 @@ export function loadPersistedFilters() {
   } catch { /* ignore malformed/missing storage */ }
   $('search-input').value = state.filters.q;
   $('search-clear').style.display = state.filters.q ? '' : 'none';
+  const compact = () => document.documentElement.dataset.density === 'compact';
+  document.documentElement.dataset.density = localStorage.getItem('omniview-density') === 'compact' ? 'compact' : '';
+  $('density-toggle').addEventListener('click', () => {
+    document.documentElement.dataset.density = compact() ? '' : 'compact';
+    try { localStorage.setItem('omniview-density', document.documentElement.dataset.density); } catch { /* storage unavailable */ }
+    syncLayoutButtons();
+  });
   syncLayoutButtons();
   applyCardSize();
 }
@@ -623,6 +630,10 @@ function syncLayoutButtons() {
     b.setAttribute('aria-pressed', String(on));
   });
   $('card-size').style.display = state.layout === 'list' ? 'none' : '';
+  const dense = document.documentElement.dataset.density === 'compact';
+  $('density-toggle').style.display = state.layout === 'list' ? '' : 'none';
+  $('density-toggle').classList.toggle('active', dense);
+  $('density-toggle').setAttribute('aria-pressed', String(dense));
 }
 
 // `groups` is [[heading | null, entries]] (Browse only); plain callers pass just `entries`.
@@ -750,7 +761,7 @@ function onItemClick(e, el, entry, clickOpensDetail) {
     state.selectAnchorId = entry.id;
     return;
   }
-  if (clickOpensDetail) openDetail(entry.id);
+  if (clickOpensDetail) withTransition(() => openDetail(entry.id));
 }
 
 let draggedEntryId = null; // entry being dragged inside a board

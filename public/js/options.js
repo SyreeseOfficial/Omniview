@@ -4,6 +4,7 @@
 import { state, COLOR_NAMES, CARET_SVG, byName } from './state.js';
 import { api } from './api.js';
 import { confirm_, prompt_ } from './modals.js';
+import { tagMatches, similarTag, suggestTags } from './lib.js';
 import { renderBrowse } from './browse.js';
 import { renderTagList, renderTypeList, renderFoundViaList } from './settings.js';
 import { renderFormTagPills, renderDetailTagPills } from './entry.js';
@@ -295,7 +296,7 @@ export async function afterTagsChanged(reload = true) {
 // ═══════════════════════════════════════════ TAG INPUT WIDGET ══
 // Adds `raw` to a selection, reusing an existing tag whose name differs only in
 // case, and registering a brand-new one. Returns true when the selection changed.
-function addTag(tagsArr, raw) {
+export function addTag(tagsArr, raw) {
   const val = raw.trim();
   if (!val) return false;
   let tag = state.tags.find(t => t.toLowerCase() === val.toLowerCase());
@@ -321,11 +322,11 @@ export function setupTagInput(inputId, dropdownId, tagsArr, onUpdate) {
     if (navigateDropdown(e, dropdown)) return;
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (addTag(tagsArr, input.value)) {
+      addTagChecked(tagsArr, input.value, () => {
         input.value = '';
         dropdown.style.display = 'none';
         onUpdate();
-      }
+      });
     }
     if (e.key === 'Escape') { dropdown.style.display = 'none'; }
   });
@@ -334,10 +335,41 @@ export function setupTagInput(inputId, dropdownId, tagsArr, onUpdate) {
   });
 }
 
+// Adds a typed tag, first asking when it looks like one that already exists
+// (Minimal vs Minimalist, plural vs singular). `done` runs once the tag was added.
+function addTagChecked(tagsArr, raw, done) {
+  const val = raw.trim();
+  if (!val) return;
+  const go = () => { if (addTag(tagsArr, val)) done(); };
+  const exists = state.tags.some(t => t.toLowerCase() === val.toLowerCase());
+  const near = exists ? null : similarTag(val, state.tags);
+  if (near) confirm_(`"${val}" looks like your existing tag "${near}". Create it anyway?`, go, 'Create anyway');
+  else go();
+}
+
+// One-click chips for tags the palette points to (Dark Mode, Monochrome…). Offered, never applied.
+export function renderTagSuggestions(box, palette, tagsArr, onUpdate) {
+  const names = suggestTags(palette)
+    .map(n => state.tags.find(t => t.toLowerCase() === n.toLowerCase()))
+    .filter(t => t && !tagsArr.includes(t));
+  box.innerHTML = '';
+  box.style.display = names.length ? '' : 'none';
+  if (!names.length) return;
+  box.append('Suggested from the image:');
+  names.forEach(name => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'board-chip-toggle';
+    chip.textContent = `+ ${name}`;
+    chip.addEventListener('click', () => { tagsArr.push(name); onUpdate(); });
+    box.appendChild(chip);
+  });
+}
+
 function renderTagDropdown(input, dropdown, tagsArr, onUpdate) {
   const q = input.value.toLowerCase();
   const available = state.tags
-    .filter(t => !tagsArr.includes(t) && t.toLowerCase().includes(q))
+    .filter(t => !tagsArr.includes(t) && tagMatches(t, q))
     .sort(byName);
   dropdown.innerHTML = '';
   dropdown.setAttribute('role', 'listbox');
@@ -350,13 +382,23 @@ function renderTagDropdown(input, dropdown, tagsArr, onUpdate) {
   addNew._activate = () => {
     dropdown.style.display = 'none';
     prompt_('New style tag', input.value.trim(), val => {
-      addTag(tagsArr, val);
-      input.value = '';
-      onUpdate();
+      addTagChecked(tagsArr, val, () => { input.value = ''; onUpdate(); });
     });
   };
   addNew.addEventListener('mousedown', e => { e.preventDefault(); addNew._activate(); });
   dropdown.appendChild(addNew);
+
+  // Typed text that is close to (but not exactly) an existing tag: point at the real one.
+  const near = q.trim() && !state.tags.some(t => t.toLowerCase() === q.trim()) ? similarTag(q, state.tags) : null;
+  if (near && !tagsArr.includes(near)) {
+    const hint = document.createElement('div');
+    hint.className = 'tag-dropdown-item create';
+    hint.setAttribute('role', 'option');
+    hint.textContent = `Did you mean “${near}”?`;
+    hint._activate = () => { tagsArr.push(near); input.value = ''; dropdown.style.display = 'none'; onUpdate(); };
+    hint.addEventListener('mousedown', e => { e.preventDefault(); hint._activate(); });
+    dropdown.appendChild(hint);
+  }
 
   available.forEach(tag => {
     const item = document.createElement('div');

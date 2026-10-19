@@ -62,3 +62,36 @@ test('orderEntries puts the manual order first and keeps the rest in place', asy
   assert.deepEqual(orderEntries(list, ['c', 'ghost', 'a']).map(e => e.id), ['c', 'a', 'b', 'd']);
   assert.deepEqual(orderEntries(list, []).map(e => e.id), ['a', 'b', 'c', 'd']);
 });
+
+test('suggestTags reads lightness and saturation from the palette', async () => {
+  const { suggestTags } = await import('../public/js/lib.js');
+  assert.deepEqual(suggestTags([]), []);
+  assert.deepEqual(suggestTags(['#0b0b0f', '#2a2a30']), ['Dark Mode', 'Monochrome']);
+  assert.deepEqual(suggestTags(['#fafafa', '#e0e0e0']), ['Light Mode', 'Monochrome']);
+  assert.deepEqual(suggestTags(['#808080', '#e5484d', '#3e63dd', '#30a46c']), ['Colorful']);
+  assert.deepEqual(suggestTags(['#e5484d', '#d03a40', '#c02f35']), [], 'one hue is not colorful');
+});
+
+test('dominantColors buckets RGBA pixels', async () => {
+  const { dominantColors } = await import('../public/js/lib.js');
+  const px = (r, g, b, n) => Array.from({ length: n }, () => [r, g, b, 255]).flat();
+  const colors = dominantColors(Uint8ClampedArray.from([...px(255, 0, 0, 30), ...px(250, 5, 5, 5), ...px(0, 0, 255, 10), 0, 0, 0, 0]));
+  assert.ok(colors[0].startsWith('#f'), 'red first');
+  assert.equal(colors.length, 2);
+  assert.ok(colors[1].startsWith('#0000'));
+});
+
+test('tag aliases and near-duplicate detection', async () => {
+  const { tagMatches, similarTag } = await import('../public/js/lib.js');
+  assert.ok(tagMatches('Monochrome', 'bw'));
+  assert.ok(tagMatches('Dark Mode', 'nig'));
+  assert.ok(!tagMatches('Dark Mode', 'xyz'));
+  assert.ok(tagMatches('Flat', ''));
+  const tags = ['Minimal', 'Gradient', 'Retro', 'Brutalist'];
+  assert.equal(similarTag('Minimalist', tags), 'Minimal');
+  assert.equal(similarTag('Gradients', tags), 'Gradient');
+  assert.equal(similarTag('Retroo', tags), 'Retro');
+  assert.equal(similarTag('Brutalizt', tags), 'Brutalist');
+  assert.equal(similarTag('Playful', tags), null);
+  assert.equal(similarTag('Min', tags), null, 'short prefixes are not near-duplicates');
+});

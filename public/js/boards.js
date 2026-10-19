@@ -313,6 +313,7 @@ function openBoardPicker(board) {
 }
 
 export function setupBoards() {
+  $('print-board-btn').addEventListener('click', () => window.print());
   BOARD_COLORS.forEach(color => {
     const dot = document.createElement('button');
     dot.type = 'button';
