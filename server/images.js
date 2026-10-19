@@ -56,26 +56,29 @@ async function stripExif(file) {
   fs.writeFileSync(src, await img.rotate().toFormat(format, { quality: 95 }).toBuffer());
 }
 
-// Byte-identical duplicate detection. Hashes are remembered per file name (the first
-// upload after a restart hashes every screenshot once); /api/optimize rewrites files
-// and clears them. A re-saved or re-encoded copy of the same picture won't match.
-const fileHashes = new Map();
-const fileHash = file => {
-  if (!fileHashes.has(file)) {
-    fileHashes.set(file, fs.promises.readFile(path.join(UPLOADS_DIR, file)).then(buf => crypto.createHash('sha256').update(buf).digest('hex'), () => null));
-  }
-  return fileHashes.get(file);
-};
+// Byte-identical duplicate detection. Each entry remembers the SHA-256 of its files
+// (image_hashes), so only screenshots saved before that field existed are ever read
+// again. /api/optimize rewrites files and clears them. A re-saved or re-encoded copy
+// of the same picture won't match.
+const hashFile = file => fs.promises.readFile(path.join(UPLOADS_DIR, file)).then(buf => crypto.createHash('sha256').update(buf).digest('hex'), () => null);
 
 // The entry (in either library, trash included) that already has this image, if any.
-async function findDuplicateImage(file) {
-  const hash = await fileHash(file);
+async function findDuplicateImage(file, hash) {
+  let found = null;
   for (const [space, lib] of Object.entries(SPACES)) {
+    let learned = false;
     for (const e of [...lib.data.entries, ...lib.data.trash]) {
       for (const f of e.screenshots) {
-        if (f !== file && (await fileHash(f)) === hash) return { id: e.id, title: e.title || e.url, space, trashed: !!e.deleted_at };
+        if (f === file) continue;
+        if (!e.image_hashes[f]) {
+          e.image_hashes[f] = await hashFile(f);
+          learned = learned || !!e.image_hashes[f];
+        }
+        if (!found && e.image_hashes[f] === hash) found = { id: e.id, title: e.title || e.url, space, trashed: !!e.deleted_at };
       }
     }
+    if (learned) writeDB(lib.data, lib);
+    if (found) return found;
   }
   return null;
 }
@@ -97,7 +100,8 @@ async function attachScreenshot(entryId, file, remote = false) {
       removeFiles(file);
       throw httpError(400, 'Could not read that image');
     }
-    const duplicateOf = await findDuplicateImage(file);
+    const hash = await hashFile(file);
+    const duplicateOf = hash ? await findDuplicateImage(file, hash) : null;
     const entry = readDB().entries.find(e => e.id === entryId);
     if (!entry || entry.screenshots.length >= MAX_SCREENSHOTS) {
       removeFiles(file);
@@ -105,7 +109,7 @@ async function attachScreenshot(entryId, file, remote = false) {
     }
     entry.screenshots.push(file);
     if (remote) entry.remote_shots.push(file);
-    entry.screenshot = entry.screenshots[0];
+    if (hash) entry.image_hashes[file] = hash;
     if (!entry.palette.length) entry.palette = palette;
     writeDB(readDB());
     return { entry, duplicateOf };
@@ -152,6 +156,6 @@ async function backfillSpace() {
 }
 
 module.exports = {
-  ALLOWED_IMAGE_TYPES, MAX_SCREENSHOTS, upload, fileHashes, attaching,
+  ALLOWED_IMAGE_TYPES, MAX_SCREENSHOTS, upload, attaching,
   extractPalette, attachScreenshot, backfillImages
 };

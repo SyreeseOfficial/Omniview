@@ -16,9 +16,30 @@
 
 The trash is never exported.
 
-**Entry**: `id`, `url`, `title`, `note`, `type` (or null), `color` (or null), `style_tags[]`, `found_via`, `favicon` (or null), `favorite`, `boards[]` (board ids), `date_added`, optional `updated_at`, `screenshots[]` (file names in `uploads/`), plus the library's extra fields (`brand`, `price` in `fashion`).
+**Entry**
 
-**Derived, safe to ignore on import**: `screenshot` (always `screenshots[0]`), `palette` (recomputed from the cover image), `remote_shots` (which screenshots were fetched from the page rather than uploaded).
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string | |
+| `url` | string | http(s) only; ad-click parameters (`utm_*`, `fbclid`, `gclid`, ...) are removed when saving |
+| `title`, `note` | string | |
+| `type`, `color` | string or null | `type` is one of the library's `types` |
+| `style_tags` | string[] | names from the library's `tags` |
+| `found_via` | string | from `foundVia`, or empty |
+| `favicon` | string or null | |
+| `favorite` | boolean | |
+| `bought` | boolean | wishlist status; the Fashion library hides bought entries by default |
+| `boards` | string[] | board ids |
+| `date_added` | ISO date string | |
+| `updated_at` | ISO date string | only after the entry has been edited (favourite, bought and board changes do not count) |
+| `visited_at` | ISO date string or null | when the entry's site was last opened from Omniview |
+| `screenshots` | string[] | file names in `uploads/`; the first is the cover |
+
+The library's extra fields follow: `brand`, `price` and `price_was` in `fashion` (all strings; `price_was` holds the previous price after Refresh price).
+
+**Derived, safe to ignore on import**: `palette` (recomputed from the cover image) and `remote_shots` (which screenshots were fetched from the page rather than uploaded).
+
+Not exported: the trash, and the per-file hashes Omniview keeps to spot duplicate images.
 
 **Board**: `id`, `name`, `description`, `emoji`, `color`, `pinned`, `order[]` (entry ids in manual order), `created`.
 

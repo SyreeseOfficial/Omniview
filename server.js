@@ -63,8 +63,11 @@ app.use('/api', (req, res, next) => {
   if (err) res.setHeader('X-Save-Error', err.replace(/[^\x20-\x7e]/g, '?'));
   next();
 });
-app.get('/api/spaces', (req, res) => res.json(Object.entries(SPACES).map(([name, lib]) => ({ name, label: lib.label, fields: Object.keys(lib.fields) }))));
-app.get('/api/health', (req, res) => res.json({ ok: true, saveError: saveError() }));
+app.get('/api/spaces', (req, res) => res.json(Object.entries(SPACES).map(([name, lib]) => ({
+  name, label: lib.label, fields: Object.keys(lib.fields), features: lib.features, notice: lib.notice
+}))));
+// Limits the browser needs to agree with, so they live in one place.
+app.get('/api/config', (req, res) => res.json({ maxScreenshots: images.MAX_SCREENSHOTS }));
 
 // 100 kb covers every route except bulk (up to 5000 ids, ~40 bytes each).
 app.use('/api/entries/bulk', express.json({ limit: '300kb' }));

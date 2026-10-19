@@ -184,15 +184,15 @@ test('price and brand exist in the fashion space only', async () => {
   await call('DELETE', `/api/entries/${ui.id}`);
 });
 
-test('pinned, bought, price_was and visits', async () => {
+test('bought, price_was and visits', async () => {
   const f = await create('https://flags.example', { price: '160' }, 'fashion');
-  assert.deepEqual([f.pinned, f.bought, f.visited_at], [false, false, null]);
-  const up = (await call('PUT', `/api/entries/${f.id}`, { pinned: true, bought: true, price: '120', price_was: '160' }, 'fashion')).body;
-  assert.deepEqual([up.pinned, up.bought, up.price, up.price_was], [true, true, '120', '160']);
-  assert.equal((await call('PUT', `/api/entries/${f.id}`, { pinned: 'yes' }, 'fashion')).status, 400);
+  assert.deepEqual([f.bought, f.visited_at], [false, null]);
+  const up = (await call('PUT', `/api/entries/${f.id}`, { bought: true, price: '120', price_was: '160' }, 'fashion')).body;
+  assert.deepEqual([up.bought, up.price, up.price_was], [true, '120', '160']);
+  assert.equal((await call('PUT', `/api/entries/${f.id}`, { bought: 'yes' }, 'fashion')).status, 400);
 
-  const flagsOnly = (await call('PUT', `/api/entries/${f.id}`, { pinned: false }, 'fashion')).body;
-  assert.equal(flagsOnly.updated_at, up.updated_at, 'pinning is not an edit');
+  const flagsOnly = (await call('PUT', `/api/entries/${f.id}`, { bought: false }, 'fashion')).body;
+  assert.equal(flagsOnly.updated_at, up.updated_at, 'marking bought is not an edit');
 
   const visit = await call('POST', '/api/visit', { ids: [f.id, 'missing'] }, 'fashion');
   assert.equal(visit.body.count, 1);
@@ -219,7 +219,7 @@ test('each space is saved to its own file, with its own daily backup', async () 
   await call('DELETE', `/api/entries/${f.id}`, undefined, 'fashion');
 });
 
-test('export and reset only touch their own space', async () => {
+test('export only includes its own space', async () => {
   const f = await create('https://exp-fashion.example', {}, 'fashion');
   const u = await create('https://exp-ui.example');
   await upload(f.id, 'image/png', PNG_1PX, 'fashion');
@@ -229,12 +229,7 @@ test('export and reset only touch their own space', async () => {
   const zip = await fetch(`${base}/api/export?format=zip`, { headers: { 'X-Space': 'fashion' } });
   assert.match(zip.headers.get('content-disposition'), /omniview-fashion-export\.zip/);
 
-  const shot = (await call('GET', `/api/entries/${f.id}`, undefined, 'fashion')).body.screenshot;
-  assert.equal((await call('POST', '/api/reset', { confirm: 'reset' }, 'fashion')).status, 200);
-  assert.deepEqual((await call('GET', '/api/entries', undefined, 'fashion')).body, []);
-  assert.ok((await call('GET', '/api/types', undefined, 'fashion')).body.includes('Jacket'), 'reset restores the fashion defaults');
-  assert.equal(fs.existsSync(path.join(UPLOADS, shot)), false, 'the wiped space\'s screenshots are removed');
-  assert.equal((await call('GET', `/api/entries/${u.id}`)).status, 200, 'the UI space is untouched');
+  await call('DELETE', `/api/entries/${f.id}`, undefined, 'fashion');
   await call('DELETE', `/api/entries/${u.id}`);
 });
 
@@ -251,17 +246,13 @@ function rawRequest(method, urlPath, headers) {
 }
 
 test('mutating requests need the X-Omniview header', async () => {
-  assert.equal(await rawRequest('POST', '/api/reset', {}), 403);
+  assert.equal(await rawRequest('POST', '/api/entries', {}), 403);
   assert.equal((await call('GET', '/api/entries')).status, 200);
 });
 
 test('cross-origin and non-local Host requests are refused', async () => {
   assert.equal(await rawRequest('GET', '/api/entries', { Origin: 'https://evil.example' }), 403);
   assert.equal(await rawRequest('GET', '/api/entries', { Host: 'evil.example' }), 403);
-});
-
-test('reset requires explicit confirmation', async () => {
-  assert.equal((await call('POST', '/api/reset', {})).status, 400);
 });
 
 // ─── Screenshots ─────────────────────────────────────────────────────────────
@@ -278,7 +269,7 @@ test('uploading then clearing a screenshot deletes the file and its thumbnail', 
 
   const cleared = await call('PUT', `/api/entries/${id}`, { removeScreenshot: true });
   assert.equal(cleared.status, 200);
-  assert.equal(cleared.body.screenshot, null);
+  assert.equal(cleared.body.screenshots[0], undefined);
   assert.equal(fs.existsSync(filePath), false, 'cleared file should be removed from disk');
   assert.equal(fs.existsSync(thumbPath), false, 'cleared thumbnail should be removed from disk');
 
@@ -291,11 +282,11 @@ test('an entry can hold several screenshots; the first is the cover', async () =
   const b = (await upload(id)).body.screenshot;
   let entry = (await call('GET', `/api/entries/${id}`)).body;
   assert.deepEqual(entry.screenshots, [a, b]);
-  assert.equal(entry.screenshot, a);
+  assert.equal(entry.screenshots[0], a);
 
   entry = (await call('DELETE', `/api/entries/${id}/screenshots/${a}`)).body;
   assert.deepEqual(entry.screenshots, [b]);
-  assert.equal(entry.screenshot, b);
+  assert.equal(entry.screenshots[0], b);
   assert.equal(fs.existsSync(path.join(UPLOADS, a)), false);
   await call('DELETE', `/api/entries/${id}`);
 });
@@ -336,9 +327,9 @@ test('optimize converts a large PNG to a capped WebP and repoints the entry', as
   assert.equal(res.status, 200);
   assert.ok(res.body.converted >= 1);
   const entry = (await call('GET', `/api/entries/${id}`)).body;
-  assert.equal(entry.screenshot, old.replace('.png', '.webp'));
+  assert.equal(entry.screenshots[0], old.replace('.png', '.webp'));
   assert.equal(fs.existsSync(path.join(UPLOADS, old)), false);
-  assert.equal((await sharp(path.join(UPLOADS, entry.screenshot)).metadata()).width, 2400);
+  assert.equal((await sharp(path.join(UPLOADS, entry.screenshots[0])).metadata()).width, 2400);
   await call('DELETE', `/api/entries/${id}`);
 });
 
@@ -356,6 +347,7 @@ test('unfurl reads title, image, favicon and theme color from a page', async () 
     const res = await call('GET', `/api/unfurl?url=${encodeURIComponent(origin)}`);
     assert.equal(res.status, 200);
     assert.deepEqual(res.body, {
+      canonical: null,
       title: 'Fish & Chips', image: `${origin}/hero.png`, images: [`${origin}/hero.png`], favicon: `${origin}/fav.svg`, themeColor: '#aabbcc',
       brand: null, siteName: null, price: null, currency: null, availability: null, color: null, category: null
     });
@@ -604,7 +596,7 @@ test('export refuses unknown formats and stamps a version', async () => {
   assert.equal(json.trash, undefined);
 });
 
-// ─── Export / reset (last: reset wipes everything) ───────────────────────────
+// ─── Export ──────────────────────────────────────────────────────────────────
 test('export returns the library as JSON and as a ZIP', async () => {
   const e = await create('https://export.example');
   await upload(e.id);
@@ -617,16 +609,6 @@ test('export returns the library as JSON and as a ZIP', async () => {
   assert.equal(zip.status, 200);
   assert.equal(zip.headers.get('content-type'), 'application/zip');
   assert.equal(Buffer.from(await zip.arrayBuffer()).subarray(0, 2).toString(), 'PK');
-});
-
-test('reset wipes entries and screenshot files', async () => {
-  const e = await create('https://reset.example');
-  const shot = (await upload(e.id)).body.screenshot;
-
-  const res = await call('POST', '/api/reset', { confirm: 'reset' });
-  assert.equal(res.status, 200);
-  assert.deepEqual((await call('GET', '/api/entries')).body, []);
-  assert.equal(fs.existsSync(path.join(UPLOADS, shot)), false);
 });
 
 test('board description, emoji, color, pin and ordering', async () => {
@@ -705,16 +687,13 @@ test('a failed write is reported on every answer until a write succeeds', async 
   try {
     await create('https://save-fail.example');
     await app.flushDB();
-    const res = await fetch(`${base}/api/health`);
+    const res = await fetch(`${base}/api/spaces`);
     assert.match(res.headers.get('x-save-error'), /library\.json: EISDIR/);
-    assert.match((await res.json()).saveError, /EISDIR/);
   } finally {
     fs.rmdirSync(blocker);
   }
   await app.flushDB(); // dirty from the failed attempt, now succeeds
-  const ok = await fetch(`${base}/api/health`);
-  assert.equal(ok.headers.get('x-save-error'), null);
-  assert.equal((await ok.json()).saveError, null);
+  assert.equal((await fetch(`${base}/api/spaces`)).headers.get('x-save-error'), null);
 });
 
 // ─── Single-server lock ──────────────────────────────────────────────────────
@@ -734,14 +713,15 @@ test('the lock refuses a live owner and replaces a stale one', () => {
 // ─── Library validation ──────────────────────────────────────────────────────
 test('libraryProblems names missing ids, duplicates and dangling boards', () => {
   const problems = app.libraryProblems({
-    entries: [{ id: 'a', title: 'A', boards: ['b1', 'gone'] }, { id: 'a', title: 'A2', boards: [] }, { title: 'No id', boards: [] }],
+    entries: [{ id: 'a', title: 'A', boards: ['b1', 'gone'], date_added: '2026-01-01' }, { id: 'a', title: 'A2', boards: [], date_added: '2026-01-02' }, { title: 'No id', boards: [], date_added: '2026-01-03' }, { id: 'c', title: 'Bad date', boards: [], date_added: 'last tuesday' }],
     trash: [],
     boards: [{ id: 'b1', name: 'One' }]
   });
   assert.deepEqual(problems.map(p => p.replace(/\s*\(.*?\)/, '')), [
     'duplicate entry id a',
     'entry #3 has no id',
-    'entry a is on missing board gone'
+    'entry a is on missing board gone',
+    'entry c has an invalid date_added: "last tuesday"'
   ]);
 });
 
@@ -800,4 +780,71 @@ test('uploads lose EXIF (GPS) but keep their orientation', async () => {
   const stored = await sharp(path.join(UPLOADS, body.screenshot)).metadata();
   assert.equal(stored.exif, undefined);
   assert.equal(stored.width, 40);
+});
+
+// ─── Round 3 ─────────────────────────────────────────────────────────────────
+test('ad-click parameters are stripped when saving, other parameters kept', async () => {
+  const e = await create('https://strip.example/p?utm_source=x&variant=7&fbclid=abc&gclid=1');
+  assert.equal(e.url, 'https://strip.example/p?variant=7');
+  const same = await create('https://strip2.example/p?color=red');
+  assert.equal(same.url, 'https://strip2.example/p?color=red');
+  const put = await call('PUT', `/api/entries/${same.id}`, { url: 'https://strip2.example/p?utm_campaign=y' });
+  assert.equal(put.body.url, 'https://strip2.example/p');
+});
+
+test('a colourway of a saved entry is reported by /api/duplicate', async () => {
+  const a = await create('https://way.example/products/coat-olive', { title: 'Heritage Coat - Olive', price: '425' }, 'fashion');
+  const q = (p, extra = '') => call('GET', `/api/duplicate?url=${encodeURIComponent(p)}&title=${encodeURIComponent('Heritage Coat | Way')}&price=425${extra}`, undefined, 'fashion');
+  assert.equal((await q('https://www.way.example/products/coat-navy')).body.colourway.id, a.id);
+  assert.equal((await q('https://way.example/products/coat-olive')).body.colourway, null, 'the same page is a duplicate, not a colourway');
+  assert.equal((await q('https://other.example/products/coat-navy')).body.colourway, null, 'another shop');
+  const differentPrice = await call('GET', `/api/duplicate?url=${encodeURIComponent('https://way.example/x')}&title=Heritage%20Coat&price=300`, undefined, 'fashion');
+  assert.equal(differentPrice.body.colourway, null);
+  await call('DELETE', `/api/entries/${a.id}`, undefined, 'fashion');
+});
+
+test('/api/config shares the screenshot limit and /api/spaces the per-library features', async () => {
+  assert.equal((await call('GET', '/api/config')).body.maxScreenshots, 10);
+  const spaces = (await call('GET', '/api/spaces')).body;
+  assert.equal(spaces.find(s => s.name === 'fashion').features.foundVia, false);
+  assert.deepEqual(spaces.find(s => s.name === 'ui').features, {});
+});
+
+test('screenshot hashes are remembered on the entry and stay out of the export', async () => {
+  const e = await create('https://hash.example');
+  const { body } = await upload(e.id);
+  const stored = (await call('GET', `/api/entries/${e.id}`)).body;
+  assert.match(stored.image_hashes[body.screenshot], /^[0-9a-f]{64}$/);
+  const exported = await (await fetch(`${base}/api/export?format=json`)).json();
+  assert.equal(exported.entries.find(x => x.id === e.id).image_hashes, undefined);
+  await call('DELETE', `/api/entries/${e.id}`);
+});
+
+test('every exported entry field is documented in docs/EXPORT_FORMAT.md', async () => {
+  const doc = fs.readFileSync(path.join(__dirname, '..', 'docs', 'EXPORT_FORMAT.md'), 'utf8');
+  for (const space of ['ui', 'fashion']) {
+    const e = await create(`https://doc-${space}.example`, {}, space);
+    await upload(e.id, 'image/png', PNG_1PX, space);
+    await call('PUT', `/api/entries/${e.id}`, { title: 'Edited' }, space); // adds updated_at
+    const json = await (await fetch(`${base}/api/export?format=json&space=${space}`)).json();
+    const entry = json.entries.find(x => x.id === e.id);
+    const missing = Object.keys(entry).filter(k => !doc.includes(`\`${k}\``));
+    assert.deepEqual(missing, [], `${space} entry fields missing from the doc`);
+    for (const k of Object.keys(json)) assert.ok(doc.includes(`"${k}"`), `top-level ${k} missing from the doc`);
+    await call('DELETE', `/api/entries/${e.id}`, undefined, space);
+  }
+});
+
+test('unfurl answers are cached, so the same link is fetched once', async () => {
+  let hits = 0;
+  const site = http.createServer((req, res) => { hits++; res.setHeader('Content-Type', 'text/html'); res.end('<title>Cached</title>'); });
+  await new Promise(r => site.listen(0, '127.0.0.1', r));
+  const url = encodeURIComponent(`http://127.0.0.1:${site.address().port}/cache`);
+  try {
+    assert.equal((await call('GET', `/api/unfurl?url=${url}`)).body.title, 'Cached');
+    assert.equal((await call('GET', `/api/unfurl?url=${url}`)).body.title, 'Cached');
+    assert.equal(hits, 1);
+  } finally {
+    site.close();
+  }
 });

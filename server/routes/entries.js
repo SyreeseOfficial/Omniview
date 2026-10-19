@@ -17,7 +17,7 @@ function cleanEntryFields(body, db, create) {
   const has = k => body[k] !== undefined;
   if (create && !has('url')) throw httpError(400, 'url is required');
 
-  if (has('url')) out.url = cleanHttpUrl(body.url, 'url');
+  if (has('url')) out.url = stripTracking(cleanHttpUrl(body.url, 'url'));
   if (has('title')) out.title = cleanString(body.title, 'title', 300);
   if (has('note')) out.note = cleanString(body.note, 'note', 10000);
   if (has('type')) out.type = optional(body.type) === null ? null : cleanString(body.type, 'type', 100) || null;
@@ -27,7 +27,7 @@ function cleanEntryFields(body, db, create) {
   for (const [f, max] of Object.entries(SPACES[currentSpace()].fields)) {
     if (has(f)) out[f] = cleanString(body[f], f, max);
   }
-  for (const flag of ['favorite', 'pinned', 'bought']) {
+  for (const flag of ['favorite', 'bought']) {
     if (!has(flag)) continue;
     if (typeof body[flag] !== 'boolean') throw httpError(400, `${flag} must be a boolean`);
     out[flag] = body[flag];
@@ -49,7 +49,18 @@ function cleanEntryFields(body, db, create) {
 // Two URLs are "the same page" when they differ only by scheme, www., a trailing
 // slash, the #fragment, parameter order, tracking parameters, or a size/color variant
 // (?variant=123), or, on Shopify, the /collections/<x> prefix of a /products/<handle> link.
-const TRACKING_PARAM = /^(utm_.*|fbclid|gclid|igshid|mc_cid|mc_eid|ref|ref_src|_hsenc|_hsmi|variant|size|colou?r)$/i;
+const TRACKING = 'utm_.*|fbclid|gclid|igshid|mc_cid|mc_eid|_hsenc|_hsmi';
+const TRACKING_PARAM = new RegExp(`^(${TRACKING}|ref|ref_src|variant|size|colou?r)$`, 'i');
+const SAVED_TRACKING_PARAM = new RegExp(`^(${TRACKING})$`, 'i'); // the same junk, but variant/size/colour are part of the link you chose
+
+// The URL as saved: ad-click parameters dropped, everything else (including an untouched string) kept.
+function stripTracking(url) {
+  const u = new URL(url);
+  const junk = [...u.searchParams.keys()].filter(k => SAVED_TRACKING_PARAM.test(k));
+  if (!junk.length) return url;
+  junk.forEach(k => u.searchParams.delete(k));
+  return u.href;
+}
 
 function normalizeUrl(raw) {
   try {
@@ -67,17 +78,34 @@ function findDuplicate(db, url, excludeId) {
   const key = normalizeUrl(url);
   return db.entries.find(e => e.id !== excludeId && normalizeUrl(e.url) === key) || null;
 }
+
+// Another colourway of the same product, saved as its own entry: same shop, same price, same
+// title before the " - Olive" / " | Shop" tail. Only a hint, so it never blocks saving.
+const hostOf = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
+const titleStem = t => t.split(/\s[-–—|]\s/)[0].trim().toLowerCase();
+
+function findColourway(db, { url, title, price }, excludeId) {
+  const stem = titleStem(title);
+  if (!stem || !price) return null;
+  return db.entries.find(e => e.id !== excludeId && hostOf(e.url) === hostOf(url) && e.price === price && titleStem(e.title) === stem && normalizeUrl(e.url) !== normalizeUrl(url)) || null;
+}
+
 // ─── Entries ──────────────────────────────────────────────────────────────────
-// Filtering/searching happens in the browser (it holds the full list), so this
-// just returns everything, newest first.
+// Filtering, searching and sorting happen in the browser (it holds the full list),
+// so this just returns everything in stored order.
 router.get('/api/entries', (req, res) => {
-  res.json([...readDB().entries].sort((a, b) => new Date(b.date_added) - new Date(a.date_added)));
+  res.json(readDB().entries);
 });
 
-// Is this URL already saved? Used by the add form as you type.
+// Is this URL already saved (or a colourway of a saved entry)? Used by the add form as you type.
 router.get('/api/duplicate', (req, res) => {
-  const url = typeof req.query.url === 'string' ? req.query.url.trim() : '';
-  res.json({ duplicate: url ? findDuplicate(readDB(), url, req.query.exclude) : null });
+  const str = k => (typeof req.query[k] === 'string' ? req.query[k].trim() : '');
+  const url = str('url');
+  const db = readDB();
+  res.json({
+    duplicate: url ? findDuplicate(db, url, req.query.exclude) : null,
+    colourway: url ? findColourway(db, { url, title: str('title'), price: str('price') }, req.query.exclude) : null
+  });
 });
 
 // Get single entry
@@ -99,10 +127,10 @@ router.post('/api/entries', (req, res) => {
   const entry = {
     id: crypto.randomUUID(),
     title: '',
-    screenshot: null,
     screenshots: [],
     remote_shots: [],
     palette: [],
+    image_hashes: {},
     type: null,
     color: null,
     style_tags: [],
@@ -110,7 +138,6 @@ router.post('/api/entries', (req, res) => {
     found_via: '',
     favicon: null,
     favorite: false,
-    pinned: false,
     bought: false,
     visited_at: null,
     boards: [],
@@ -135,12 +162,12 @@ router.put('/api/entries/:id', (req, res) => {
     entry.screenshots.forEach(removeFiles);
     entry.screenshots = [];
     entry.remote_shots = [];
-    entry.screenshot = null;
+    entry.image_hashes = {};
     entry.palette = [];
   }
   Object.assign(entry, fields);
-  // Favoriting, pinning, marking bought and board moves aren't "edits" to the entry itself.
-  if (Object.keys(fields).some(k => !['favorite', 'pinned', 'bought', 'boards'].includes(k))) entry.updated_at = new Date().toISOString();
+  // Favoriting, marking bought and board moves aren't "edits" to the entry itself.
+  if (Object.keys(fields).some(k => !['favorite', 'bought', 'boards'].includes(k))) entry.updated_at = new Date().toISOString();
   writeDB(db);
   res.json(entry);
 });
@@ -174,9 +201,9 @@ router.delete('/api/entries/:id/screenshots/:file', async (req, res) => {
   entry.screenshots.splice(i, 1);
   entry.remote_shots = entry.remote_shots.filter(f => f !== req.params.file);
   removeFiles(req.params.file);
-  entry.screenshot = entry.screenshots[0] || null;
+  delete entry.image_hashes[req.params.file];
   if (i === 0) {
-    entry.palette = entry.screenshot ? await extractPalette(path.join(UPLOADS_DIR, entry.screenshot)).catch(() => []) : [];
+    entry.palette = entry.screenshots[0] ? await extractPalette(path.join(UPLOADS_DIR, entry.screenshots[0])).catch(() => []) : [];
   }
   writeDB(readDB());
   res.json(entry);

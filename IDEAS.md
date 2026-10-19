@@ -56,7 +56,6 @@ All items from this section are under **Completed** or **Skipped** at the bottom
 
 ## 12. Code, tests & dev experience
 
-- [ ] **[M]** Fixture-based tests for `pageInfo` against realistic shop markup: Shopify, WooCommerce, Squarespace, `AggregateOffer`, `offers` as array, `priceSpecification` arrays, `hasVariant`. Autofill is the most fragile piece and the most used.
 - [ ] **[M]** `// @ts-check` + JSDoc `@typedef Entry` and a `tsc --noEmit` script: type safety without a build step, and catches the `entry.palette` / `style_tags` shape drift that `normalizeEntry` guards by hand.
 - [ ] **[M]** Serve shared constants from the server: `MAX_SCREENSHOTS` is duplicated in `entry.js:11` with a "keep in step" comment. A tiny `/api/config` (limits, space defaults) removes the drift risk.
 - [ ] **[L]** `engines: { node: ">=20" }` in `package.json` (code uses `Object.hasOwn`, `AbortSignal.timeout`, `??=`); fail early with a clear message on old Node.
@@ -364,6 +363,7 @@ Less is more. Each line says what goes, what it costs to keep, and the evidence.
 - [x] **[M]** Split `server.js` (1,009 lines) into modules, mirroring the client: `store.js` (spaces, load/save/backup), `images.js`, `unfurl.js`, `routes/*.js`. The test suite makes it a safe refactor.
 - [x] **[H]** `uuid` dependency: `crypto.randomUUID()` does the same and `server.js` already requires `crypto`. Two call sites, one fewer package.
 - [x] **[H]** `compression` dependency and middleware. The server only listens on `127.0.0.1`; gzip over loopback costs CPU and saves nothing.
+- [x] **[M]** Fixture-based tests for `pageInfo` against realistic shop markup: Shopify, WooCommerce, Squarespace, `AggregateOffer`, `offers` as array, `priceSpecification` arrays, `hasVariant`. Autofill is the most fragile piece and the most used.
 
 ## Skipped
 
@@ -457,5 +457,6 @@ Parked for now, not rejected.
 - [ ] **[L]** Random button and the `R` key, if neither is used in a month. At 30 entries the grid is the shuffle.
 - [ ] **[L]** The `visited_at` badge and `/api/visit` if "Open all links" is not used on a board. 0 of 60 entries have it today.
 - [ ] **[L]** Board decoration: colour dot *and* emoji *and* pin-to-sidebar *and* description *and* manual order. None of the 3 boards uses any of them. Keep emoji and manual order; cut colour and pin first.
+
 
 

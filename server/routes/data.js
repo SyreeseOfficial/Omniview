@@ -6,8 +6,8 @@ const fs = require('fs');
 const express = require('express');
 const archiver = require('archiver');
 const sharp = require('sharp');
-const { DB_PATH, UPLOADS_DIR, THUMBS_DIR, BACKUP_DIR, SPACES, currentSpace, readDB, writeDB, flushDB, thumbName, removeFiles } = require('../store');
-const { fileHashes, attaching } = require('../images');
+const { DB_PATH, UPLOADS_DIR, THUMBS_DIR, BACKUP_DIR, SPACES, currentSpace, readDB, flushDB, brokenImages, thumbName } = require('../store');
+const { attaching } = require('../images');
 const { httpError } = require('../validate');
 
 const router = express.Router();
@@ -18,8 +18,9 @@ router.get('/api/export', (req, res) => {
   const fmt = req.query.format ?? 'json';
   if (fmt !== 'json' && fmt !== 'zip') throw httpError(400, 'format must be json or zip');
   const space = currentSpace();
-  // The trash isn't part of the library you'd move or back up. See docs/EXPORT_FORMAT.md.
-  const db = { version: EXPORT_VERSION, space, ...readDB(), trash: undefined };
+  const data = readDB();
+  // The trash isn't part of the library you'd move or back up, and image_hashes is a cache. See docs/EXPORT_FORMAT.md.
+  const db = { version: EXPORT_VERSION, space, ...data, trash: undefined, entries: data.entries.map(({ image_hashes, ...e }) => e) };
   const base = space === 'ui' ? 'omniview-export' : `omniview-${space}-export`;
 
   if (fmt === 'json') {
@@ -72,7 +73,6 @@ router.post('/api/cleanup', (req, res) => res.json(sweepUnused(false)));
 // AVIFs (already compact) are left alone, as is anything that wouldn't get smaller.
 const MAX_ORIGINAL_PX = 2400;
 router.post('/api/optimize', async (req, res) => {
-  fileHashes.clear();
   const renames = new Map();
   let saved = 0;
   const files = fs.readdirSync(UPLOADS_DIR, { withFileTypes: true }).filter(d => d.isFile() && /\.(png|jpe?g|webp)$/i.test(d.name));
@@ -99,14 +99,20 @@ router.post('/api/optimize', async (req, res) => {
         if (!e.screenshots.some(f => renames.has(f))) return;
         e.screenshots = e.screenshots.map(swap);
         e.remote_shots = e.remote_shots.map(swap);
-        e.screenshot = e.screenshots[0];
         lib.dirty = true;
       });
     }
     await flushDB(); // references are on disk before the old files go
     renames.forEach((_, old) => fs.rmSync(path.join(UPLOADS_DIR, old), { force: true }));
   }
-  fileHashes.clear(); // files were rewritten under the same names
+  // Files were rewritten, so every remembered hash is stale; they are learned again on the next upload.
+  if (saved) {
+    for (const lib of Object.values(SPACES)) {
+      [...lib.data.entries, ...lib.data.trash].forEach(e => { e.image_hashes = {}; });
+      lib.dirty = true;
+    }
+    await flushDB();
+  }
   res.json({ converted: renames.size, saved });
 });
 
@@ -126,20 +132,11 @@ router.get('/api/storage', (req, res) => {
   res.json({
     dataDir: path.dirname(DB_PATH),
     uploadsDir: UPLOADS_DIR,
-    spaces: Object.fromEntries(Object.entries(SPACES).map(([name, lib]) => [name, { entries: lib.data.entries.length, trash: lib.data.trash.length }])),
+    spaces: Object.fromEntries(Object.entries(SPACES).map(([name, lib]) => [name, { entries: lib.data.entries.length, trash: lib.data.trash.length, brokenImages: brokenImages(lib.data).length }])),
     uploads: dirStats(UPLOADS_DIR),
     thumbs: dirStats(THUMBS_DIR),
     backups: dirStats(BACKUP_DIR)
   });
-});
-
-// ─── Reset ────────────────────────────────────────────────────────────────────
-router.post('/api/reset', (req, res) => {
-  if (req.body.confirm !== 'reset') throw httpError(400, 'Send {"confirm":"reset"} to wipe this library');
-  const db = readDB();
-  [...db.entries, ...db.trash].forEach(e => e.screenshots.forEach(removeFiles));
-  writeDB(JSON.parse(JSON.stringify(SPACES[currentSpace()].defaults)));
-  res.json({ ok: true });
 });
 
 module.exports = router;
