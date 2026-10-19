@@ -131,7 +131,6 @@ All items from this section are under **Completed** or **Skipped** at the bottom
 - [ ] **[L]** Test that every non-GET `/api` route rejects a request without `X-Omniview` (walk the router stack). Guards the cross-site protection against a new route being mounted before the check.
 - [ ] **[L]** Split `test/api.test.js` (803 lines, 59 tests) by area (entries, lists, boards, spaces, images). `node --test` runs files in parallel and a failure then names its area.
 - [ ] **[L]** Switch ad-hoc show/hide to the `hidden` attribute: `index.html` has 45 inline `style="display:none"` and the JS has about 74 `style.display =` writes. One `[hidden]{display:none!important}` rule and `el.hidden = …` removes most of them.
-- [ ] **[L]** `CHANGELOG.md` is generated from every commit, including the automatic "Update fashion library data and uploads" ones. Add `--invert-grep --grep='library data and uploads'` to the `changelog` script.
 - [ ] **[L]** README: a `curl` example with `X-Omniview: 1` and `X-Space`, for keybind scripts (the header requirement surprises anyone scripting against the API).
 - [ ] **[L]** One-page `docs/ARCHITECTURE.md`: add flow (URL → unfurl → guesses → save → screenshots → palette) and who owns what (state in memory, debounced write, spaces via `AsyncLocalStorage`). The app is 7.6k lines now.
 - [ ] **[L]** Sidebar items are `<a href="#">` (they navigate in JS and add `#` to the URL). Make them `<button>`s with `aria-current` on the active one.
@@ -372,6 +371,7 @@ All items from this section are under **Completed** or **Skipped** at the bottom
 - [x] **[L]** Keyboard Shortcuts as a full sidebar screen for 14 lines. Make `?` open a small dialog (the confirm modal exists) and delete `view-shortcuts` plus the nav item.
 - [x] **[M]** Cut single-letter shortcuts to `N` (new), `/` (search), `G` (switch library) and `?`. `B O F S T R` navigate to screens one click away, and the "Single-key shortcuts" toggle in Settings exists only because they misfire.
 - [x] **[L]** Delete generated `CHANGELOG.md` from the repo and print it on demand (`npm run changelog`), or keep it but filter the data commits; today it is a copy of `git log`.
+- [x] **[L]** `CHANGELOG.md` is generated from every commit, including the automatic "Update fashion library data and uploads" ones. Add `--invert-grep --grep='library data and uploads'` to the `changelog` script.
 
 ## Skipped
 
@@ -465,6 +465,7 @@ Parked for now, not rejected.
 - [ ] **[L]** Random button and the `R` key, if neither is used in a month. At 30 entries the grid is the shuffle.
 - [ ] **[L]** The `visited_at` badge and `/api/visit` if "Open all links" is not used on a board. 0 of 60 entries have it today.
 - [ ] **[L]** Board decoration: colour dot *and* emoji *and* pin-to-sidebar *and* description *and* manual order. None of the 3 boards uses any of them. Keep emoji and manual order; cut colour and pin first.
+
 
 
 

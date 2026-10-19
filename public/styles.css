@@ -1120,7 +1120,8 @@ textarea { resize: vertical; }
   flex-direction: column;
   gap: .85rem;
 }
-.detail-top { display: flex; align-items: flex-start; gap: .5rem; margin-bottom: .25rem; }
+.detail-top { display: flex; align-items: flex-start; gap: .5rem; margin-bottom: .25rem; padding-right: 2.25rem; } /* room for the close button */
+.detail-top .btn-sm { flex-shrink: 0; padding: .15rem .5rem; font-size: .72rem; }
 .detail-url {
   font-size: .82rem;
   color: var(--accent);
