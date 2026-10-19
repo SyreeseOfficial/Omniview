@@ -2,13 +2,15 @@
 // actions, favorites, and the sidebar counters.
 
 import {
-  state, COLORS, PLACEHOLDER_SVG, OPEN_ICON, byName, cleanUrl, titleOf, safeHref, thumbImg, faviconImg, colorName,
-  defaultFilters, brandPrice, spaceKey, priceOf, priceTotal
+  state, SPACES, COLORS, PLACEHOLDER_SVG, OPEN_ICON, COPY_ICON, BOARD_ICON, byName, cleanUrl, titleOf, safeHref, thumbImg, faviconImg,
+  colorName, defaultFilters, brandPrice, spaceKey, priceOf, priceTotal
 } from './state.js';
 import { api } from './api.js';
+import { inAddedRange } from './lib.js';
 import { confirm_, toastSuccess, toastError, showToast } from './modals.js';
 import { openDetail } from './entry.js';
 import { removeEntryFromBoard } from './boards.js';
+import { switchSpace } from './main.js';
 
 const $ = id => document.getElementById(id);
 
@@ -44,23 +46,37 @@ export function setupSearch() {
 }
 
 // ═══════════════════════════════════════════ FILTERS ══
-// Search text, tag/type/board/color filters, favorite toggle, and sort order all
-// persist across reloads, the same way theme and layout already do. Each space
-// keeps its own, and this is also what runs when the space is switched.
+// Search text, filters, sort, grouping, card size and layout all persist across
+// reloads, the same way theme does. Each space keeps its own, and this is also
+// what runs when the space is switched.
+const LAYOUTS = ['gallery', 'masonry', 'list'];
+
 export function loadPersistedFilters() {
   state.filters = defaultFilters();
   state.sort = 'newest';
+  state.group = '';
+  state.cardSize = 220;
+  state.layout = state.space === 'fashion' ? 'masonry' : 'gallery'; // product shots are mostly portrait
+  alsoCache = null;
   try {
     const saved = JSON.parse(localStorage.getItem(spaceKey('omniview-filters')));
     if (saved && saved.filters) Object.assign(state.filters, saved.filters);
     if (saved && saved.sort) state.sort = saved.sort;
+    if (saved && saved.group) state.group = saved.group;
+    if (saved && saved.cardSize) state.cardSize = saved.cardSize;
+    const layout = localStorage.getItem(spaceKey('omniview-layout'));
+    if (LAYOUTS.includes(layout)) state.layout = layout;
   } catch { /* ignore malformed/missing storage */ }
   $('search-input').value = state.filters.q;
   $('search-clear').style.display = state.filters.q ? '' : 'none';
+  syncLayoutButtons();
+  applyCardSize();
 }
 
 function persistFilters() {
-  try { localStorage.setItem(spaceKey('omniview-filters'), JSON.stringify({ filters: state.filters, sort: state.sort })); } catch { /* storage unavailable */ }
+  try {
+    localStorage.setItem(spaceKey('omniview-filters'), JSON.stringify({ filters: state.filters, sort: state.sort, group: state.group, cardSize: state.cardSize }));
+  } catch { /* storage unavailable */ }
 }
 
 export function setupFilters() {
@@ -93,10 +109,49 @@ export function setupFilters() {
     renderBrowse();
   });
 
+  // Clears every filter but the search text, tag mode and the both-libraries switch.
   $('filter-clear').addEventListener('click', () => {
-    state.filters = { ...state.filters, type: '', tags: [], board: '', color: '', brand: '', favorite: false, recent: false, hideBought: false };
+    const { q, tagMode, both } = state.filters;
+    state.filters = { ...defaultFilters(), q, tagMode, both };
     renderBrowse();
   });
+
+  $('filter-both').addEventListener('click', () => {
+    state.filters.both = !state.filters.both;
+    renderBrowse();
+  });
+
+  $('filter-tags-search').addEventListener('input', e => {
+    tagQuery = e.target.value.trim().toLowerCase();
+    renderTagFilters();
+  });
+  $('filter-tags-dd').addEventListener('toggle', e => { if (e.target.open) $('filter-tags-search').focus(); });
+
+  ['filter-from', 'filter-to'].forEach(id => $(id).addEventListener('change', () => {
+    state.filters.from = $('filter-from').value;
+    state.filters.to = $('filter-to').value;
+    state.filters.added = state.filters.from || state.filters.to ? 'custom' : '';
+    renderBrowse();
+  }));
+
+  // A card from the other library: switch to it with the same search and open the entry.
+  $('also-grid').addEventListener('click', async e => {
+    const card = e.target.closest('[data-id]');
+    if (!card || e.target.closest('a')) return;
+    e.stopPropagation();
+    const { q } = state.filters;
+    const other = otherSpace();
+    await switchSpace(other);
+    if (state.space !== other) return;
+    state.filters.q = q;
+    $('search-input').value = q;
+    $('search-clear').style.display = q ? '' : 'none';
+    renderBrowse();
+    openDetail(card.dataset.id);
+  }, true);
+
+  document.addEventListener('click', e => { if (quickMenu && !quickMenu.contains(e.target)) closeQuickMenu(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeQuickMenu(); });
 
   $('random-btn').addEventListener('click', () => {
     const pool = sortEntries(applyFilters(state.entries));
@@ -125,38 +180,81 @@ function renderSingleFilter(ddId, listId, labelId, allLabel, options, current, o
   [{ value: '', label: allLabel }, ...options].forEach(o => {
     const item = document.createElement('button');
     item.type = 'button';
-    item.className = 'filter-option' + (o.value === current ? ' selected' : '');
-    item.textContent = o.label;
+    item.className = 'filter-option' + (o.value === current ? ' selected' : '') + (o.count === 0 && o.value !== current ? ' zero' : '');
+    item.append(o.label);
+    if (o.count !== undefined) item.append(countSpan(o.count));
     item.addEventListener('click', () => { dd.open = false; onPick(o.value); });
     list.appendChild(item);
   });
 }
 
+const countSpan = n => Object.assign(document.createElement('span'), { className: 'filter-opt-count', textContent: n });
+
+// How many entries each option would leave under the other active filters, so
+// empty options can be dimmed. `skip` is the filter the options belong to.
+function facetCounts(skip, keysOf) {
+  const counts = new Map();
+  applyFilters(state.entries, skip).forEach(e => keysOf(e).forEach(k => counts.set(k, (counts.get(k) || 0) + 1)));
+  return counts;
+}
+
 function renderTypeFilter() {
+  const counts = facetCounts('type', e => [e.type]);
   renderSingleFilter(
     'filter-type-dd', 'filter-type-list', 'filter-type-label', 'All Types',
-    [...state.types].sort(byName).map(t => ({ value: t, label: t })),
+    [...state.types].sort(byName).map(t => ({ value: t, label: t, count: counts.get(t) || 0 })),
     state.filters.type,
     v => { state.filters.type = v; renderBrowse(); }
   );
 }
 
 function renderBrandFilter() {
-  const counts = {};
-  state.entries.forEach(e => { if (e.brand) counts[e.brand] = (counts[e.brand] || 0) + 1; });
+  const counts = facetCounts('brand', e => [e.brand]);
+  const brands = [...new Set(state.entries.map(e => e.brand).filter(Boolean))];
   renderSingleFilter(
     'filter-brand-dd', 'filter-brand-list', 'filter-brand-label', 'All Brands',
-    Object.keys(counts).sort(byName).map(v => ({ value: v, label: `${v} ${counts[v]}` })),
+    brands.sort(byName).map(v => ({ value: v, label: v, count: counts.get(v) || 0 })),
     state.filters.brand,
     v => { state.filters.brand = v; renderBrowse(); }
   );
 }
 
+function renderViaFilter() {
+  const counts = facetCounts('via', e => [e.found_via]);
+  renderSingleFilter(
+    'filter-via-dd', 'filter-via-list', 'filter-via-label', 'Any Source',
+    [...state.foundVia].sort(byName).map(v => ({ value: v, label: v, count: counts.get(v) || 0 })),
+    state.filters.via,
+    v => { state.filters.via = v; renderBrowse(); }
+  );
+}
+
+// Presets plus a from/to pair; typing a date switches the pill to "custom".
+const ADDED_PRESETS = [{ value: 'week', label: 'This week' }, { value: 'month', label: 'This month' }];
+
+function renderAddedFilter() {
+  const f = state.filters;
+  renderSingleFilter('filter-added-dd', 'filter-added-list', 'filter-added-label', 'Any Date', ADDED_PRESETS, f.added,
+    v => { Object.assign(state.filters, { added: v, from: '', to: '' }); renderBrowse(); });
+  if (f.added === 'custom') {
+    $('filter-added-label').textContent = `${f.from || '…'} → ${f.to || '…'}`;
+    $('filter-added-dd').classList.add('active');
+  }
+  $('filter-from').value = f.from;
+  $('filter-to').value = f.to;
+}
+
+let tagQuery = '';
+
 function renderTagFilters() {
   const wrap = $('filter-tags');
   wrap.innerHTML = '';
-  [...state.tags].sort(byName).forEach(tag => {
+  // Adding a tag narrows the results in ALL mode but widens them in ANY mode.
+  const counts = facetCounts(state.filters.tagMode === 'all' ? '' : 'tags', e => e.style_tags);
+  const shown = [...state.tags].sort(byName).filter(t => t.toLowerCase().includes(tagQuery));
+  shown.forEach(tag => {
     const label = document.createElement('label');
+    if (!counts.get(tag) && !state.filters.tags.includes(tag)) label.className = 'zero';
     const box = document.createElement('input');
     box.type = 'checkbox';
     box.checked = state.filters.tags.includes(tag);
@@ -168,9 +266,10 @@ function renderTagFilters() {
     });
     label.appendChild(box);
     label.appendChild(document.createTextNode(tag));
+    label.appendChild(countSpan(counts.get(tag) || 0));
     wrap.appendChild(label);
   });
-  if (state.tags.length === 0) wrap.innerHTML = '<div class="filter-check-empty">No tags yet.</div>';
+  if (shown.length === 0) wrap.innerHTML = `<div class="filter-check-empty">${state.tags.length === 0 ? 'No tags yet.' : 'No matching tags.'}</div>`;
 
   const n = state.filters.tags.length;
   const count = $('filter-tags-count');
@@ -184,9 +283,10 @@ function renderTagFilters() {
 
 export function renderBoardFilters() {
   $('filter-boards-dd').style.display = state.boards.length === 0 ? 'none' : '';
+  const counts = facetCounts('board', e => e.boards);
   renderSingleFilter(
     'filter-boards-dd', 'filter-boards-list', 'filter-boards-label', 'All Boards',
-    state.boards.map(b => ({ value: b.id, label: b.name })),
+    state.boards.map(b => ({ value: b.id, label: b.name, count: counts.get(b.id) || 0 })),
     state.filters.board,
     v => { state.filters.board = v; renderBrowse(); }
   );
@@ -218,7 +318,7 @@ function renderColorFilter() {
   });
 }
 
-// ─── Sort ──────────────────────────────────────────────────────
+// ─── Sort & group ──────────────────────────────────────────────
 const SORT_OPTIONS = [
   { value: 'newest', label: 'Newest' },
   { value: 'oldest', label: 'Oldest' },
@@ -226,17 +326,55 @@ const SORT_OPTIONS = [
   { value: 'type', label: 'By Type' },
   { value: 'brand', label: 'By Brand', fashion: true },
   { value: 'price-asc', label: 'Price: Low → High', fashion: true },
-  { value: 'price-desc', label: 'Price: High → Low', fashion: true }
+  { value: 'price-desc', label: 'Price: High → Low', fashion: true },
+  { value: 'favorites', label: 'Favorites first' },
+  { value: 'shuffle', label: 'Shuffle' }
 ];
 const visibleSorts = () => SORT_OPTIONS.filter(o => !o.fashion || state.space === 'fashion');
 
-// Sorting by type or brand also puts a heading above each group.
-const GROUP_KEYS = { type: e => e.type || 'No type', brand: e => e.brand || 'No brand' };
+// key() buckets an entry; '' means it has none and lands under `none`, listed last.
+// Tag and board use the first one only, so an entry shows once.
+const monthKey = iso => { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
+const boardName = id => state.boards.find(b => b.id === id)?.name;
+const GROUPS = {
+  month: { label: 'Month added', key: e => monthKey(e.date_added), title: k => new Date(`${k}-15`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) },
+  type: { label: 'Type', key: e => e.type, none: 'No type' },
+  brand: { label: 'Brand', key: e => e.brand, none: 'No brand', fashion: true },
+  tag: { label: 'Tag', key: e => e.style_tags[0], none: 'No tags' },
+  board: { label: 'Board', key: e => boardName(e.boards[0]), none: 'No board' }
+};
+const visibleGroups = () => Object.entries(GROUPS).filter(([, g]) => !g.fashion || state.space === 'fashion');
+
+// The Group control wins; otherwise sorting by type/brand still puts headings in.
+const activeGroup = () => (visibleGroups().some(([k]) => k === state.group) ? state.group : '') || (state.sort === 'type' || state.sort === 'brand' ? state.sort : '');
+
+// [[heading | null, entries]]. Month groups follow the sort direction, the rest run A–Z.
+function groupEntries(entries) {
+  const by = activeGroup();
+  if (!by) return [[null, entries]];
+  const g = GROUPS[by];
+  const buckets = new Map();
+  entries.forEach(e => {
+    const k = g.key(e) || '';
+    if (!buckets.has(k)) buckets.set(k, []);
+    buckets.get(k).push(e);
+  });
+  const dir = by === 'month' ? (state.sort === 'oldest' ? 1 : -1) : 1;
+  const keys = [...buckets.keys()].sort((a, b) => (a === '') - (b === '') || dir * a.localeCompare(b));
+  return keys.map(k => [k ? (g.title ? g.title(k) : k) : g.none, buckets.get(k)]);
+}
 
 // Entries without a price go last in both directions.
 const byPrice = dir => (a, b) => {
   const pa = priceOf(a), pb = priceOf(b);
   return pa === null || pb === null ? (pa === null) - (pb === null) : dir * (pa - pb);
+};
+
+// Random order assigned on first sight, so Shuffle stays put until the page reloads.
+const shuffleRank = new Map();
+const rankOf = e => {
+  if (!shuffleRank.has(e.id)) shuffleRank.set(e.id, Math.random());
+  return shuffleRank.get(e.id);
 };
 
 function sortEntries(entries) {
@@ -249,51 +387,62 @@ function sortEntries(entries) {
     case 'brand': return list.sort((a, b) => (a.brand || '').localeCompare(b.brand || '') || byNewest(a, b));
     case 'price-asc': return list.sort(byPrice(1));
     case 'price-desc': return list.sort(byPrice(-1));
+    case 'favorites': return list.sort((a, b) => b.favorite - a.favorite || byNewest(a, b));
+    case 'shuffle': return list.sort((a, b) => rankOf(a) - rankOf(b));
     default: return list.sort(byNewest);
   }
 }
 
-function renderSortFilter() {
-  const dd = $('filter-sort-dd');
-  const list = $('filter-sort-list');
-  const options = visibleSorts();
-  const current = options.find(o => o.value === state.sort) || options[0];
-  $('filter-sort-label').textContent = `Sort: ${current.label}`;
+// A dropdown of plain choices ("Sort: Newest").
+function renderMenu(prefix, name, options, current, onPick) {
+  const dd = $(`filter-${prefix}-dd`);
+  const list = $(`filter-${prefix}-list`);
+  const chosen = options.find(o => o.value === current) || options[0];
+  $(`filter-${prefix}-label`).textContent = `${name}: ${chosen.label}`;
   list.innerHTML = '';
   options.forEach(o => {
     const item = document.createElement('button');
     item.type = 'button';
-    item.className = 'filter-option' + (o.value === state.sort ? ' selected' : '');
+    item.className = 'filter-option' + (o.value === chosen.value ? ' selected' : '');
     item.textContent = o.label;
-    item.addEventListener('click', () => { dd.open = false; state.sort = o.value; renderBrowse(); });
+    item.addEventListener('click', () => { dd.open = false; onPick(o.value); });
     list.appendChild(item);
   });
 }
 
+const renderSortFilter = () => renderMenu('sort', 'Sort', visibleSorts(), state.sort, v => { state.sort = v; renderBrowse(); });
+const renderGroupFilter = () => renderMenu('group', 'Group',
+  [{ value: '', label: 'None' }, ...visibleGroups().map(([value, g]) => ({ value, label: g.label }))],
+  state.group, v => { state.group = v; renderBrowse(); });
+
 // ═══════════════════════════════════════════ BROWSE ══
 // The browser holds the whole library, so filtering lives here and only here.
-function applyFilters(entries) {
+const matchesQuery = (e, q) =>
+  e.title.toLowerCase().includes(q) ||
+  (e.brand || '').toLowerCase().includes(q) ||
+  e.url.toLowerCase().includes(q) ||
+  e.note.toLowerCase().includes(q) ||
+  e.style_tags.some(t => t.toLowerCase().includes(q));
+
+// `skip` leaves one filter out (type, brand, via, board or tags), for the facet counts.
+function applyFilters(entries, skip = '') {
   let list = entries;
   const f = state.filters;
   if (f.q) {
     const q = f.q.toLowerCase();
-    list = list.filter(e =>
-      e.title.toLowerCase().includes(q) ||
-      (e.brand || '').toLowerCase().includes(q) ||
-      e.url.toLowerCase().includes(q) ||
-      e.note.toLowerCase().includes(q) ||
-      e.style_tags.some(t => t.toLowerCase().includes(q))
-    );
+    list = list.filter(e => matchesQuery(e, q));
   }
-  if (f.type) list = list.filter(e => e.type === f.type);
-  if (f.brand) list = list.filter(e => e.brand === f.brand);
+  if (f.type && skip !== 'type') list = list.filter(e => e.type === f.type);
+  if (f.brand && skip !== 'brand') list = list.filter(e => e.brand === f.brand);
+  if (f.via && skip !== 'via') list = list.filter(e => e.found_via === f.via);
+  if (f.added) list = list.filter(e => inAddedRange(e.date_added, f));
   if (f.hideBought) list = list.filter(e => !e.style_tags.some(t => t.toLowerCase() === 'bought'));
-  if (f.tags.length) {
+  if (f.tags.length && skip !== 'tags') {
     list = f.tagMode === 'all'
       ? list.filter(e => f.tags.every(t => e.style_tags.includes(t)))
       : list.filter(e => f.tags.some(t => e.style_tags.includes(t)));
   }
-  if (f.board) list = list.filter(e => e.boards.includes(f.board));
+  if (f.board && skip !== 'board') list = list.filter(e => e.boards.includes(f.board));
   if (f.color) {
     const fromPalette = state.space !== 'fashion';
     list = list.filter(e => e.color === f.color || (fromPalette && e.palette.slice(0, 3).some(h => colorName(h) === f.color)));
@@ -306,33 +455,99 @@ function applyFilters(entries) {
   return list;
 }
 
+// One removable chip per active dropdown/tag filter; each `drop` returns the patch that undoes it.
+function filterChips() {
+  const f = state.filters;
+  const chips = [];
+  const add = (text, drop) => chips.push({ text, drop });
+  if (f.type) add(`type: ${f.type}`, () => ({ type: '' }));
+  if (f.brand) add(`brand: ${f.brand}`, () => ({ brand: '' }));
+  f.tags.forEach(t => add(`tag: ${t}`, () => ({ tags: state.filters.tags.filter(x => x !== t) })));
+  if (f.board) add(`board: ${boardName(f.board) || '?'}`, () => ({ board: '' }));
+  if (f.via) add(`via: ${f.via}`, () => ({ via: '' }));
+  if (f.color) add(`color: ${f.color}`, () => ({ color: '' }));
+  if (f.added) add(`added: ${f.added === 'custom' ? `${f.from || '…'} → ${f.to || '…'}` : `this ${f.added}`}`, () => ({ added: '', from: '', to: '' }));
+  return chips;
+}
+
+function renderChips(chips) {
+  const wrap = $('active-chips');
+  wrap.style.display = chips.length ? '' : 'none';
+  wrap.innerHTML = '';
+  chips.forEach(c => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'chip active filter-chip';
+    chip.title = 'Remove this filter';
+    chip.textContent = `${c.text} ✕`;
+    chip.addEventListener('click', () => { Object.assign(state.filters, c.drop()); renderBrowse(); });
+    wrap.appendChild(chip);
+  });
+}
+
+// ─── Scroll & focus survive a rebuild ──────────────────────────
+let lastIds = [];
+
+// Rebuilding the grid empties it for a moment (masonry thumbnails have no height
+// until they decode), which would clamp the page scroll. Hold the height, put the
+// scroll back, and focus the card that had it.
+function keepPlace(rebuild, ids) {
+  const same = ids.length === lastIds.length && ids.every((id, i) => id === lastIds[i]);
+  lastIds = ids;
+  const box = $('view-browse').querySelector('.grid-container');
+  const y = window.scrollY;
+  const focused = document.activeElement?.closest?.('[data-id]')?.dataset.id;
+  if (same && y > 0) box.style.minHeight = `${box.offsetHeight}px`;
+  rebuild();
+  if (same && y > 0) {
+    window.scrollTo(0, y);
+    setTimeout(() => { box.style.minHeight = ''; }, 400);
+  }
+  if (focused) focusCard(focused, false);
+}
+
+// Focuses an entry's card in the visible view; `reveal` scrolls it into view if it's off screen.
+export function focusCard(id, reveal = true) {
+  const card = $(`view-${state.view}`)?.querySelector(`[data-id="${id}"]`);
+  if (!card) return;
+  card.focus({ preventScroll: true });
+  if (reveal) card.scrollIntoView({ block: 'nearest' });
+}
+
 export function renderBrowse() {
   const f = state.filters;
+  const chips = filterChips();
   renderTypeFilter();
   renderBrandFilter();
   renderTagFilters();
   renderBoardFilters();
+  renderViaFilter();
   renderColorFilter();
+  renderAddedFilter();
   renderSortFilter();
-  $('filter-fav').classList.toggle('active', f.favorite);
-  $('filter-fav').setAttribute('aria-pressed', String(f.favorite));
-  $('filter-bought').classList.toggle('active', f.hideBought);
-  $('filter-bought').setAttribute('aria-pressed', String(f.hideBought));
-  $('filter-recent').classList.toggle('active', f.recent);
-  $('filter-recent').setAttribute('aria-pressed', String(f.recent));
-  $('filter-clear').style.display =
-    (f.type || f.brand || f.tags.length || f.board || f.color || f.favorite || f.recent || f.hideBought) ? '' : 'none';
+  renderGroupFilter();
+  renderChips(chips);
+  [['filter-fav', f.favorite], ['filter-bought', f.hideBought], ['filter-recent', f.recent], ['filter-both', f.both]].forEach(([id, on]) => {
+    $(id).classList.toggle('active', on);
+    $(id).setAttribute('aria-pressed', String(on));
+  });
+  $('filter-both').textContent = `Also in ${SPACES[otherSpace()]}`;
+  $('filter-clear').style.display = chips.length || f.favorite || f.recent || f.hideBought ? '' : 'none';
 
   const matched = applyFilters(state.entries);
   const filtered = f.recent ? matched : sortEntries(matched); // "recent" keeps most-recently-viewed first
-  if (state.view === 'browse') state.navIds = filtered.map(e => e.id);
+  const groups = groupEntries(filtered);
+  const ordered = groups.flatMap(([, list]) => list); // on-screen order, which grouping can change
+  if (state.view === 'browse') state.navIds = ordered.map(e => e.id);
 
   const grid = $('entry-grid');
   const list = $('entry-list');
   const asList = state.layout === 'list';
 
-  if (asList) renderList(list, filtered, true, true);
-  else renderGrid(grid, filtered, true, null, true);
+  keepPlace(() => {
+    if (asList) renderList(list, filtered, true, groups);
+    else renderGrid(grid, filtered, true, null, groups);
+  }, ordered.map(e => e.id));
   grid.classList.toggle('masonry', state.layout === 'masonry');
 
   grid.style.display = !asList && filtered.length ? '' : 'none';
@@ -343,6 +558,27 @@ export function renderBrowse() {
   $('result-count').textContent = [`${filtered.length} of ${state.entries.length}`, priceTotal(filtered)].filter(Boolean).join(' · ');
   updateStats();
   persistFilters();
+  renderAlso();
+}
+
+// ─── Search the other library too ──────────────────────────────
+const otherSpace = () => (state.space === 'ui' ? 'fashion' : 'ui');
+let alsoCache = null; // { space, entries }: fetched once per toggle, dropped on a space switch
+
+async function renderAlso() {
+  const section = $('also-section');
+  const { q, both } = state.filters;
+  const other = otherSpace();
+  if (!both || !q) { section.style.display = 'none'; return; }
+  if (!alsoCache || alsoCache.space !== other) {
+    try { alsoCache = { space: other, entries: await api.get('/api/entries', other) }; } catch { section.style.display = 'none'; return; }
+    if (!state.filters.both || otherSpace() !== other) return; // moved on while fetching
+  }
+  const lower = state.filters.q.toLowerCase();
+  const hits = sortEntries(alsoCache.entries.filter(e => matchesQuery(e, lower)));
+  section.style.display = hits.length ? '' : 'none';
+  $('also-heading').textContent = `Also in ${SPACES[other]} (${hits.length})`;
+  renderGrid($('also-grid'), hits, false);
 }
 
 // Sidebar counters, derived from what's already loaded.
@@ -361,11 +597,22 @@ export function setupLayoutSwitch() {
     const btn = e.target.closest('.view-switch-btn');
     if (!btn || btn.dataset.layout === state.layout) return;
     state.layout = btn.dataset.layout;
-    localStorage.setItem('omniview-layout', state.layout);
+    try { localStorage.setItem(spaceKey('omniview-layout'), state.layout); } catch { /* storage unavailable */ }
     syncLayoutButtons();
     renderBrowse();
   });
+  $('card-size').addEventListener('input', e => {
+    state.cardSize = Number(e.target.value);
+    applyCardSize();
+    persistFilters();
+  });
   syncLayoutButtons();
+  applyCardSize();
+}
+
+function applyCardSize() {
+  document.documentElement.style.setProperty('--card-min', `${state.cardSize}px`);
+  $('card-size').value = state.cardSize;
 }
 
 function syncLayoutButtons() {
@@ -374,27 +621,25 @@ function syncLayoutButtons() {
     b.classList.toggle('active', on);
     b.setAttribute('aria-pressed', String(on));
   });
+  $('card-size').style.display = state.layout === 'list' ? 'none' : '';
 }
 
-// `grouped` adds the heading rows of a By Type / By Brand sort (Browse only).
-function appendEntries(el, entries, grouped, make) {
-  const key = grouped && GROUP_KEYS[state.sort];
-  let last;
+// `groups` is [[heading | null, entries]] (Browse only); plain callers pass just `entries`.
+function appendEntries(el, entries, groups, make) {
   el.innerHTML = '';
-  entries.forEach(entry => {
-    if (key && key(entry) !== last) {
-      last = key(entry);
+  (groups || [[null, entries]]).forEach(([heading, list]) => {
+    if (heading !== null) {
       const h = document.createElement('div');
       h.className = 'group-heading';
-      h.textContent = last;
+      h.append(heading, Object.assign(document.createElement('span'), { textContent: list.length }));
       el.appendChild(h);
     }
-    el.appendChild(make(entry));
+    list.forEach(entry => el.appendChild(make(entry)));
   });
 }
 
-export function renderGrid(gridEl, entries, clickOpensDetail = true, boardId = null, grouped = false) {
-  appendEntries(gridEl, entries, grouped, entry => createCard(entry, clickOpensDetail, boardId));
+export function renderGrid(gridEl, entries, clickOpensDetail = true, boardId = null, groups = null) {
+  appendEntries(gridEl, entries, groups, entry => createCard(entry, clickOpensDetail, boardId));
 }
 
 // Small round action button used on card overlays and list rows.
@@ -416,6 +661,72 @@ function favButton(entry) {
     await toggleFavorite(entry.id);
   });
   return btn;
+}
+
+function copyButton(entry) {
+  const btn = iconButton('button', 'card-open', 'Copy URL');
+  btn.innerHTML = COPY_ICON;
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(entry.url).then(() => toastSuccess('Copied URL.'), () => toastError('Could not copy.'));
+  });
+  return btn;
+}
+
+function boardButton(entry) {
+  const btn = iconButton('button', 'card-open', 'Add to board');
+  btn.innerHTML = BOARD_ICON;
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    openBoardMenu(entry.id, btn);
+  });
+  return btn;
+}
+
+// Small popup of boards with a tick on the ones the entry is in; each click toggles.
+// The grid is rebuilt once, when the menu closes, so the card under the cursor stays put.
+let quickMenu = null;
+let quickDirty = false;
+
+function closeQuickMenu() {
+  if (!quickMenu) return;
+  quickMenu.remove();
+  quickMenu = null;
+  if (quickDirty) { quickDirty = false; renderBoardFilters(); renderBrowse(); }
+}
+
+function openBoardMenu(id, anchor) {
+  closeQuickMenu();
+  const menu = document.createElement('div');
+  menu.className = 'quick-menu';
+  const fill = () => {
+    const entry = state.entries.find(e => e.id === id);
+    menu.innerHTML = state.boards.length ? '' : '<div class="filter-check-empty">No boards yet.</div>';
+    state.boards.forEach(b => {
+      const on = entry.boards.includes(b.id);
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'filter-option' + (on ? ' selected' : '');
+      item.textContent = `${on ? '✓ ' : ''}${b.name}`;
+      item.addEventListener('click', async e => {
+        e.stopPropagation();
+        try {
+          await api.post('/api/entries/bulk', { ids: [id], action: on ? 'removeFromBoard' : 'addToBoard', boards: b.id });
+        } catch (err) { toastError(err.message); return; }
+        entry.boards = on ? entry.boards.filter(x => x !== b.id) : [...entry.boards, b.id];
+        quickDirty = true;
+        fill();
+      });
+      menu.appendChild(item);
+    });
+  };
+  fill();
+  const r = anchor.getBoundingClientRect();
+  menu.style.top = `${r.bottom + 4}px`;
+  menu.style.left = `${Math.min(r.left, window.innerWidth - 190)}px`;
+  document.body.appendChild(menu);
+  quickMenu = menu;
+  window.addEventListener('scroll', closeQuickMenu, { once: true, passive: true });
 }
 
 function openLink(entry, className, label) {
@@ -445,7 +756,9 @@ function createCard(entry, clickOpensDetail, boardId = null) {
   const card = document.createElement('div');
   card.className = 'entry-card';
   card.dataset.id = entry.id;
+  card.tabIndex = 0;
   if (state.selectedIds.has(entry.id)) card.classList.add('selected');
+  if (!entry.screenshot) card.classList.add('no-shot');
 
   const isMobile = entry.type === 'Mobile App';
   const thumb = document.createElement('div');
@@ -457,12 +770,20 @@ function createCard(entry, clickOpensDetail, boardId = null) {
     thumb.innerHTML = `<div class="thumb-placeholder">${PLACEHOLDER_SVG}<span>No screenshot</span></div>`;
   }
 
-  // Overlay: open + fav (+ remove-from-board)
+  // A page image fetched from the entry's URL stands in for a screenshot the user took.
+  if (entry.screenshot && (entry.remote_shots || []).includes(entry.screenshot)) {
+    const badge = document.createElement('span');
+    badge.className = 'shot-badge';
+    badge.textContent = 'Page image';
+    thumb.appendChild(badge);
+  }
+
+  // Overlay: open, copy URL, add to board, fav (+ remove-from-board)
   const overlay = document.createElement('div');
   overlay.className = 'card-overlay';
   const open = openLink(entry, 'card-open', 'Open site');
   if (open) overlay.appendChild(open);
-  overlay.appendChild(favButton(entry));
+  overlay.append(copyButton(entry), boardButton(entry), favButton(entry));
 
   if (boardId) {
     const removeBtn = iconButton('button', 'card-remove-board', 'Remove from board');
@@ -515,6 +836,7 @@ function createCard(entry, clickOpensDetail, boardId = null) {
   card.appendChild(thumb);
   card.appendChild(body);
   card.addEventListener('click', e => onItemClick(e, card, entry, clickOpensDetail));
+  card.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target === card) card.click(); });
   return card;
 }
 
@@ -535,8 +857,8 @@ function appendTagChips(container, tags) {
 }
 
 // ═══════════════════════════════════════════ LIST VIEW ══
-function renderList(listEl, entries, clickOpensDetail = true, grouped = false) {
-  appendEntries(listEl, entries, grouped, entry => createRow(entry, clickOpensDetail));
+function renderList(listEl, entries, clickOpensDetail = true, groups = null) {
+  appendEntries(listEl, entries, groups, entry => createRow(entry, clickOpensDetail));
 }
 
 function createRow(entry, clickOpensDetail) {

@@ -20,24 +20,7 @@ All items from this section are under **Completed** or **Skipped** at the bottom
 
 ## 3. Browse & search
 
-- [ ] **[H]** Filter by Found via. It is stored on every entry and managed in Settings, but is the only metadata with no filter in the bar.
-- [ ] **[H]** "Needs attention" smart filter: no tags, no note, no type, no real screenshot. Real data: 12/12 fashion entries have no tags and 29/30 UI entries have no note, so a triage list would clear a backlog in minutes.
-- [ ] **[M]** Active-filter chips under the search bar (`type: Shoes ×`, `tag: Minimal ×`) so one filter can be dropped without clearing all (the current `filter-clear` clears everything).
-- [ ] **[M]** Faceted counts: show how many entries each tag/type/board would match under the current filters, and dim the zeros.
-- [ ] **[M]** Search box inside the Tags dropdown. The list is 26 default tags and will grow; scrolling a checkbox list is slow.
-- [ ] **[M]** Layout is global (`omniview-layout`), unlike filters/recents which are per-space via `spaceKey`. Let fashion default to a different layout than UI.
-- [ ] **[M]** Group-by control (none / month added / type / tag / board) with sticky headings; "October 2026" headers alone make a long list navigable.
-- [ ] **[M]** "More like this" in the detail view: rank other entries by palette distance (hex → Lab/RGB) plus shared tags. All data is already in memory.
-- [ ] **[M]** Card-size slider (min column width) in the toolbar, persisted per space.
-- [ ] **[M]** Filter by date added: "this week", "this month", custom range.
-- [ ] **[L]** Shuffle sort (stable per session) so the front of the library isn't always the newest.
-- [ ] **[L]** "Favorites first" sort option.
-- [ ] **[L]** Hover quick-actions on cards: favorite, add to board, copy URL, open (only open + favorite exist now).
-- [ ] **[L]** Right-click context menu on cards (open, favorite, add to board, copy link, delete).
-- [ ] **[L]** Keep scroll position and focused card when the detail modal closes and `renderBrowse` rebuilds the grid; verify and fix if it jumps to top.
-- [ ] **[L]** Optional "search both libraries" toggle that appends a "Also in Fashion (3)" section. `FASHION_SPACE.md` lists this as a known limit.
-- [ ] **[L]** Highlight cards that have no real screenshot differently from ones with an `og:image` stand-in.
-- [ ] **[L]** Daily pick: a single "Revisit this" card on an empty search that changes once a day.
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ## 4. Entry detail & editing
 
@@ -257,6 +240,21 @@ Already listed there, but I'd move them up:
 - [x] **[L]** Show progress and file size for pending uploads, and the stage ("Uploading 2 of 3...") on save; today the Save button just waits.
 - [x] **[L]** Decode `<title>`/meta entities fully (`decodeEntities` handles a handful; `&nbsp;`, `&rsquo;`, `&#x27;` hex forms slip through). A tiny table or `he`-style lookup covers it.
 - [x] **[L]** Remember, per host, which autofilled field you corrected (e.g. always change Type for this shop) and bias the next guess. `guessBrand` already does this for brand.
+- [x] **[H]** Filter by Found via. It is stored on every entry and managed in Settings, but is the only metadata with no filter in the bar.
+- [x] **[M]** Active-filter chips under the search bar (`type: Shoes ×`, `tag: Minimal ×`) so one filter can be dropped without clearing all (the current `filter-clear` clears everything).
+- [x] **[M]** Faceted counts: show how many entries each tag/type/board would match under the current filters, and dim the zeros.
+- [x] **[M]** Search box inside the Tags dropdown. The list is 26 default tags and will grow; scrolling a checkbox list is slow.
+- [x] **[M]** Layout is global (`omniview-layout`), unlike filters/recents which are per-space via `spaceKey`. Let fashion default to a different layout than UI.
+- [x] **[M]** Group-by control (none / month added / type / tag / board) with sticky headings; "October 2026" headers alone make a long list navigable.
+- [x] **[M]** "More like this" in the detail view: rank other entries by palette distance (hex → Lab/RGB) plus shared tags. All data is already in memory.
+- [x] **[M]** Card-size slider (min column width) in the toolbar, persisted per space.
+- [x] **[M]** Filter by date added: "this week", "this month", custom range.
+- [x] **[L]** Shuffle sort (stable per session) so the front of the library isn't always the newest.
+- [x] **[L]** "Favorites first" sort option.
+- [x] **[L]** Hover quick-actions on cards: favorite, add to board, copy URL, open (only open + favorite exist now).
+- [x] **[L]** Keep scroll position and focused card when the detail modal closes and `renderBrowse` rebuilds the grid; verify and fix if it jumps to top.
+- [x] **[L]** Optional "search both libraries" toggle that appends a "Also in Fashion (3)" section. `FASHION_SPACE.md` lists this as a known limit.
+- [x] **[L]** Highlight cards that have no real screenshot differently from ones with an `og:image` stand-in.
 
 ## Skipped
 
@@ -278,3 +276,6 @@ Parked for now, not rejected.
 - [ ] **[M]** Dragging an image from another browser tab drops a URL, not a file, so `receiveImages` ignores it. Detect `text/uri-list` and route it through `/screenshot-url`.
 - [ ] **[M]** Offer `og:description` as a note suggestion (UI space), marked "autofilled" like the other fields. `pageInfo` already reads meta tags.
 - [ ] **[L]** Crop-before-save: trim a pasted screenshot's browser chrome with a simple rectangle crop in the pending-shots strip.
+- [ ] **[H]** "Needs attention" smart filter: no tags, no note, no type, no real screenshot. Real data: 12/12 fashion entries have no tags and 29/30 UI entries have no note, so a triage list would clear a backlog in minutes.
+- [ ] **[L]** Right-click context menu on cards (open, favorite, add to board, copy link, delete).
+- [ ] **[L]** Daily pick: a single "Revisit this" card on an empty search that changes once a day.

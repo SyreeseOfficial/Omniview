@@ -88,6 +88,7 @@
       <div class="view-title-row">
         <h1 class="view-title">Browse</h1>
         <div class="header-actions">
+          <input type="range" class="card-size" id="card-size" min="140" max="420" step="10" value="220" title="Card size" aria-label="Card size">
           <div class="view-switch" id="view-switch">
             <button class="view-switch-btn active" data-layout="gallery" title="Gallery view" aria-label="Gallery view" aria-pressed="true">
               <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="1" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>
@@ -115,6 +116,8 @@
         <button class="search-clear" id="search-clear" style="display:none" aria-label="Clear search">✕</button>
         <span class="result-count" id="result-count" aria-live="polite"></span>
       </div>
+
+      <div class="active-chips" id="active-chips" style="display:none"></div>
 
       <!-- Filters -->
       <div class="filter-bar">
@@ -152,6 +155,7 @@
               </span>
               <button class="filter-panel-clear" id="filter-tags-clear">Clear</button>
             </div>
+            <div class="filter-panel-search"><input type="search" id="filter-tags-search" placeholder="Search tags…" aria-label="Search tags" autocomplete="off"></div>
             <div class="filter-check-list" id="filter-tags"></div>
           </div>
         </details>
@@ -166,6 +170,16 @@
           </div>
         </details>
 
+        <details class="filter-dropdown" id="filter-via-dd">
+          <summary>
+            <span id="filter-via-label">Any Source</span>
+            <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </summary>
+          <div class="filter-panel">
+            <div class="filter-check-list" id="filter-via-list"></div>
+          </div>
+        </details>
+
         <details class="filter-dropdown" id="filter-color-dd">
           <summary>
             <span id="filter-color-label">All Colors</span>
@@ -176,9 +190,26 @@
           </div>
         </details>
 
+        <details class="filter-dropdown" id="filter-added-dd">
+          <summary>
+            <span id="filter-added-label">Any Date</span>
+            <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </summary>
+          <div class="filter-panel">
+            <div class="filter-check-list" id="filter-added-list"></div>
+            <div class="filter-range">
+              <input type="date" id="filter-from" aria-label="Added from">
+              <span>–</span>
+              <input type="date" id="filter-to" aria-label="Added to">
+            </div>
+          </div>
+        </details>
+
         <button class="chip chip-fav" id="filter-fav" aria-pressed="false">♥ Favorites</button>
         <button class="chip fashion-only" id="filter-bought" aria-pressed="false" title="Hide entries tagged &quot;bought&quot;">Hide bought</button>
         <button class="chip" id="filter-recent" aria-pressed="false" title="Entries you opened recently">Recent</button>
+
+        <button class="chip" id="filter-both" aria-pressed="false" title="Also show matches from the other library under the results">Both libraries</button>
 
         <details class="filter-dropdown" id="filter-sort-dd">
           <summary>
@@ -187,6 +218,16 @@
           </summary>
           <div class="filter-panel">
             <div class="filter-check-list" id="filter-sort-list"></div>
+          </div>
+        </details>
+
+        <details class="filter-dropdown" id="filter-group-dd">
+          <summary>
+            <span id="filter-group-label">Group: None</span>
+            <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </summary>
+          <div class="filter-panel">
+            <div class="filter-check-list" id="filter-group-list"></div>
           </div>
         </details>
 
@@ -217,6 +258,10 @@
       <div class="loading-state" id="browse-loading"><div class="spinner"></div></div>
       <div class="entry-grid" id="entry-grid"></div>
       <div class="entry-list" id="entry-list" style="display:none"></div>
+      <section class="also-section" id="also-section" style="display:none">
+        <div class="group-heading" id="also-heading"></div>
+        <div class="entry-grid" id="also-grid"></div>
+      </section>
       <div class="empty-state" id="browse-empty" style="display:none">
         <div class="empty-icon" data-fashion-text="🧥">🎨</div>
         <div id="browse-onboarding" style="display:none">
@@ -618,6 +663,11 @@
         <div class="detail-field">
           <span class="detail-label">Note</span>
           <textarea id="detail-note" class="detail-textarea" rows="4" placeholder="Add a note…"></textarea>
+        </div>
+
+        <div class="detail-field" id="detail-similar-field">
+          <span class="detail-label">More like this</span>
+          <div class="similar-row" id="detail-similar"></div>
         </div>
 
         <div class="detail-field detail-date">

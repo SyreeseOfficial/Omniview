@@ -70,6 +70,7 @@ function normalizeEntry(e, space) {
   if (!Array.isArray(e.style_tags)) e.style_tags = [];
   if (!Array.isArray(e.boards)) e.boards = [];
   if (!Array.isArray(e.palette)) e.palette = [];
+  if (!Array.isArray(e.remote_shots)) e.remote_shots = []; // screenshots fetched from a page URL (og:image stand-ins)
   if (!Array.isArray(e.screenshots)) e.screenshots = e.screenshot ? [e.screenshot] : []; // one-time migration
   e.screenshot = e.screenshots[0] || null; // cover image, kept for older clients and exports
   if (typeof e.title !== 'string') e.title = '';
@@ -217,7 +218,7 @@ const attaching = new Set();
 
 // Shared by file upload and "use the page's og:image": processes the already
 // saved file and appends it to the entry (the first one becomes the cover).
-async function attachScreenshot(entryId, file) {
+async function attachScreenshot(entryId, file, remote = false) {
   attaching.add(file);
   try {
     let palette;
@@ -233,6 +234,7 @@ async function attachScreenshot(entryId, file) {
       throw entry ? httpError(400, `An entry can have at most ${MAX_SCREENSHOTS} screenshots`) : httpError(404, 'Entry not found');
     }
     entry.screenshots.push(file);
+    if (remote) entry.remote_shots.push(file);
     entry.screenshot = entry.screenshots[0];
     if (!entry.palette.length) entry.palette = palette;
     writeDB(readDB());
@@ -435,6 +437,7 @@ app.post('/api/entries', (req, res) => {
     title: '',
     screenshot: null,
     screenshots: [],
+    remote_shots: [],
     palette: [],
     type: null,
     color: null,
@@ -464,6 +467,7 @@ app.put('/api/entries/:id', (req, res) => {
   if (req.body.removeScreenshot) {
     entry.screenshots.forEach(removeFiles);
     entry.screenshots = [];
+    entry.remote_shots = [];
     entry.screenshot = null;
     entry.palette = [];
   }
@@ -486,6 +490,7 @@ app.delete('/api/entries/:id/screenshots/:file', async (req, res) => {
   const i = entry.screenshots.indexOf(req.params.file);
   if (i === -1) return res.status(404).json({ error: 'Screenshot not found' });
   entry.screenshots.splice(i, 1);
+  entry.remote_shots = entry.remote_shots.filter(f => f !== req.params.file);
   removeFiles(req.params.file);
   entry.screenshot = entry.screenshots[0] || null;
   if (i === 0) {
@@ -710,7 +715,7 @@ app.post('/api/entries/:id/screenshot-url', async (req, res) => {
   if (!ext) throw httpError(400, 'Only PNG, JPEG, WEBP, GIF, or AVIF images are allowed');
   const file = `${uuidv4()}${ext}`;
   fs.writeFileSync(path.join(UPLOADS_DIR, file), img.buffer);
-  const entry = await attachScreenshot(req.params.id, file);
+  const entry = await attachScreenshot(req.params.id, file, true);
   res.json({ screenshot: file, screenshots: entry.screenshots });
 });
 

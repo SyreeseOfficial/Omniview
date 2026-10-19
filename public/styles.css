@@ -329,7 +329,9 @@ textarea { resize: vertical; }
 
 /* Single-choice rows (Type / Boards panels) */
 .filter-option {
-  display: block;
+  display: flex;
+  justify-content: space-between;
+  gap: .6rem;
   width: 100%;
   text-align: left;
   padding: .35rem .45rem;
@@ -399,12 +401,25 @@ textarea { resize: vertical; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ─── Grid ───────────────────────────────────────────────────── */
-.group-heading { grid-column: 1 / -1; column-span: all; margin: .5rem 0 0; font-size: .8rem; font-weight: 600; color: var(--text-2); }
+.group-heading {
+  grid-column: 1 / -1;
+  column-span: all;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin: .5rem 0 0;
+  padding: .45rem 0;
+  background: var(--bg);
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.group-heading span { margin-left: .4rem; font-weight: 400; color: var(--text-3); }
 .board-total { margin: -.75rem 0 1rem; font-size: .85rem; color: var(--text-2); }
 .grid-container { position: relative; }
 .entry-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(var(--card-min, 220px), 1fr));
   gap: 1rem;
 }
 
@@ -455,7 +470,7 @@ textarea { resize: vertical; }
   opacity: 0;
   transition: opacity .15s;
 }
-.entry-card:hover .card-overlay { opacity: 1; }
+.entry-card:hover .card-overlay, .entry-card:focus-within .card-overlay { opacity: 1; }
 .card-fav {
   width: 26px; height: 26px;
   border-radius: 50%;
@@ -1205,7 +1220,7 @@ textarea { resize: vertical; }
 .empty-state strong { color: var(--text); font-weight: 600; }
 
 /* ─── Masonry layout (true aspect ratios) ────────────────────── */
-.entry-grid.masonry { display: block; column-width: 220px; column-gap: 1rem; }
+.entry-grid.masonry { display: block; column-width: var(--card-min, 220px); column-gap: 1rem; }
 .entry-grid.masonry .entry-card { break-inside: avoid; margin-bottom: 1rem; }
 .entry-grid.masonry .thumb-wrap,
 .entry-grid.masonry .thumb-wrap.mobile { aspect-ratio: auto; display: block; }
@@ -1362,3 +1377,65 @@ html[data-space="fashion"][data-theme="light"] {
 .sidebar.collapsed .space-btn { gap: 0; }
 
 .card-meta { font-size: .75rem; color: var(--text-2); margin-bottom: .3rem; }
+
+/* ─── Browse: chips, facet counts, tag search, date range, card size ─── */
+.active-chips { display: flex; flex-wrap: wrap; gap: .35rem; margin: -.25rem 0 .75rem; }
+.filter-chip { display: inline-flex; align-items: center; gap: .35rem; }
+.filter-chip:hover { border-color: var(--fav); color: var(--fav); }
+
+/* Faceted counts: how many entries an option would leave under the other filters */
+.filter-opt-count { margin-left: auto; color: var(--text-3); font-size: .72rem; font-variant-numeric: tabular-nums; }
+.filter-option.zero, .filter-check-list label.zero { opacity: .4; }
+
+.filter-panel-search { padding: .4rem .45rem 0; }
+.filter-panel-search input { width: 100%; font-size: .78rem; padding: .3rem .5rem; }
+.filter-range { display: flex; align-items: center; gap: .35rem; padding: .45rem; border-top: 1px solid var(--border); color: var(--text-3); }
+.filter-range input { flex: 1; min-width: 0; font-size: .74rem; padding: .25rem .35rem; }
+
+.card-size { width: 90px; padding: 0; border: 0; background: none; accent-color: var(--accent); align-self: center; }
+
+/* Hover quick-actions menu (add to board) */
+.quick-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 170px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: .3rem;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 10px 30px rgba(0,0,0,.35);
+}
+
+/* Capture quality: no screenshot at all vs a page image standing in for one */
+.entry-card.no-shot { border-style: dashed; }
+.shot-badge {
+  position: absolute;
+  left: .45rem; bottom: .45rem;
+  padding: .05rem .4rem;
+  border-radius: 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  color: var(--text-3);
+  font-size: .62rem;
+  pointer-events: none;
+}
+
+/* Results from the other library */
+.also-section { margin-top: 2rem; }
+
+/* More like this */
+.similar-row { display: flex; flex-wrap: wrap; gap: .4rem; }
+.similar-item {
+  width: 64px; height: 44px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--bg-3);
+  color: var(--text-3);
+  display: flex; align-items: center; justify-content: center;
+}
+.similar-item:hover { border-color: var(--accent); }
+.similar-item img { width: 100%; height: 100%; object-fit: cover; }

@@ -179,7 +179,7 @@ export function switchSpace(next) {
     confirm_('Discard unsaved changes to this entry?', () => { clearFormSnapshot(); doSwitchSpace(next); }, 'Discard');
     return;
   }
-  doSwitchSpace(next);
+  return doSwitchSpace(next);
 }
 
 async function doSwitchSpace(next) {

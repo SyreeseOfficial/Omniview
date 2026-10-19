@@ -1,14 +1,15 @@
 // The Add Entry form (auto-fill, duplicate check, screenshot queue) and the
 // entry detail modal (screenshot carousel, palette, prev/next, save).
 
-import { state, safeHref, isHttpUrl, faviconImg, colorName, COLOR_NAMES } from './state.js';
+import { state, safeHref, isHttpUrl, faviconImg, colorName, thumbImg, titleOf, PLACEHOLDER_SVG, COLOR_NAMES } from './state.js';
+import { moreLike } from './lib.js';
 import { guessFashionFields, guessFoundVia, applyCorrections, recordCorrections } from './autofill.js';
 import { api } from './api.js';
 import {
   confirm_, toastSuccess, toastError, openModalOverlay, closeModalOverlay, isOpen, openLightbox, setLightboxSrc
 } from './modals.js';
 import { comboValue, setCombo, setupTagInput, renderTagPills } from './options.js';
-import { renderBrowse, deleteEntriesWithUndo, toggleFavorite, recordRecent } from './browse.js';
+import { renderBrowse, deleteEntriesWithUndo, toggleFavorite, recordRecent, focusCard } from './browse.js';
 import { navigate } from './main.js';
 
 const $ = id => document.getElementById(id);
@@ -673,6 +674,8 @@ function loadDetail(entry) {
   renderPalette(entry);
   renderDetailTagPills();
   renderBoardChips($('detail-boards'), state.detailBoards, 'No boards yet.');
+  renderSimilar(entry);
+  document.querySelector('.detail-meta').scrollTop = 0;
 
   const canStep = state.navIds.length > 1 && state.navIds.includes(entry.id);
   $('detail-prev').style.display = $('detail-next').style.display = canStep ? '' : 'none';
@@ -685,16 +688,41 @@ export function stepDetail(delta) {
   const ids = state.navIds;
   const i = entry ? ids.indexOf(entry.id) : -1;
   if (i === -1 || ids.length < 2) return;
-  const next = state.entries.find(e => e.id === ids[(i + delta + ids.length) % ids.length]);
+  goToEntry(state.entries.find(e => e.id === ids[(i + delta + ids.length) % ids.length]));
+}
+
+// Shows another entry in the open modal, asking first if the current one has unsaved edits.
+function goToEntry(next) {
   if (!next) return;
   if (detailSnapshot() === detailBaseline) loadDetail(next);
   else confirm_('Discard unsaved changes to this entry?', () => loadDetail(next), 'Discard');
 }
 
+// Closest entries by palette (UI only) and shared tags/type/color, from what's already in memory.
+function renderSimilar(entry) {
+  const similar = moreLike(entry, state.entries, state.space !== 'fashion');
+  $('detail-similar-field').style.display = similar.length ? '' : 'none';
+  const row = $('detail-similar');
+  row.innerHTML = '';
+  similar.forEach(e => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'similar-item';
+    btn.title = titleOf(e);
+    btn.setAttribute('aria-label', `Open ${titleOf(e)}`);
+    if (e.screenshot) btn.appendChild(thumbImg(e.screenshot)); else btn.innerHTML = PLACEHOLDER_SVG;
+    btn.addEventListener('click', () => goToEntry(e));
+    row.appendChild(btn);
+  });
+}
+
+// Hands focus back to the card of the entry you were last on, so keyboard users land where they were.
 export function closeDetail() {
+  const id = state.detailEntry && state.detailEntry.id;
   closeModalOverlay('detail-overlay');
   document.body.style.overflow = '';
   state.detailEntry = null;
+  if (id) focusCard(id);
 }
 
 export function renderDetailTagPills() {

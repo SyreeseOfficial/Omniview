@@ -3,12 +3,12 @@
 // Two separate libraries on one server: 'ui' (design inspiration) and 'fashion'
 // (wishlist). The server picks one per request from the X-Space header (api.js).
 export const SPACES = { ui: 'UI', fashion: 'Fashion' };
-export const defaultFilters = () => ({ q: '', type: '', tags: [], board: '', color: '', brand: '', favorite: false, recent: false, hideBought: false, tagMode: 'any' });
+export const defaultFilters = () => ({ q: '', type: '', tags: [], board: '', color: '', brand: '', via: '', added: '', from: '', to: '', favorite: false, recent: false, hideBought: false, both: false, tagMode: 'any' });
 
 export const state = {
   space: localStorage.getItem('omniview-space') === 'fashion' ? 'fashion' : 'ui',
   view: 'browse',
-  layout: localStorage.getItem('omniview-layout') || 'gallery', // gallery | masonry | list
+  layout: 'gallery',   // gallery | masonry | list; per space, set by loadPersistedFilters
   entries: [],
   boards: [],
   tags: [],
@@ -16,6 +16,8 @@ export const state = {
   foundVia: [],
   filters: defaultFilters(),
   sort: 'newest',
+  group: '',           // '' | month | type | brand | tag | board
+  cardSize: 220,       // min card width in px
   bulkMode: false,
   selectedIds: new Set(),
   selectAnchorId: null,
@@ -68,6 +70,9 @@ export const CARET_SVG = '<svg class="filter-caret" width="10" height="10" viewB
 
 // Blank-image mark shown wherever an entry has no uploaded screenshot.
 export const PLACEHOLDER_SVG = '<svg width="28" height="28" viewBox="0 0 28 28" fill="none"><rect x="2" y="5" width="24" height="18" rx="3" stroke="currentColor" stroke-width="1.5"/><circle cx="9" cy="12" r="2" stroke="currentColor" stroke-width="1.3"/><path d="M2 19l7-5 4 3.5 3.5-2.5 9.5 6" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
+
+export const COPY_ICON = '<svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M8.5 2.5v-.5a1 1 0 00-1-1h-5a1 1 0 00-1 1v5a1 1 0 001 1h.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+export const BOARD_ICON = '<svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="1.5" y="1.5" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M6.5 4.2v4.6M4.2 6.5h4.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
 
 export const OPEN_ICON = '<svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M5 2H2v9h9V8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M7.5 1.5H11.5V5.5M11.5 1.5L6 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
