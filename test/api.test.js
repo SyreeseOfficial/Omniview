@@ -326,6 +326,36 @@ test('unfurl reads title, image, favicon and theme color from a page', async () 
   }
 });
 
+test('unfurl retries a 403 as a browser, decodes entities, and refuses bot-wall pages', async () => {
+  const site = http.createServer((req, res) => {
+    res.setHeader('Content-Type', 'text/html');
+    if (req.url === '/wall') return res.end('<title>Just a moment...</title>');
+    if (!/Chrome/.test(req.headers['user-agent'])) return res.writeHead(403).end('no bots');
+    res.end('<title>Men&rsquo;s Jacket&nbsp;&#x27;24 &amp;lt;</title>');
+  });
+  await new Promise(r => site.listen(0, '127.0.0.1', r));
+  const origin = `http://127.0.0.1:${site.address().port}`;
+  try {
+    const ok = await call('GET', `/api/unfurl?url=${encodeURIComponent(origin)}`);
+    assert.equal(ok.body.title, 'Men’s Jacket \'24 &lt;');
+    const wall = await call('GET', `/api/unfurl?url=${encodeURIComponent(origin + '/wall')}`);
+    assert.equal(wall.status, 502);
+    assert.equal(wall.body.error, 'This site blocked the preview');
+  } finally {
+    site.close();
+  }
+});
+
+test('AVIF screenshots are accepted', async () => {
+  const sharp = require('sharp');
+  const avif = await sharp({ create: { width: 8, height: 8, channels: 3, background: '#c33' } }).avif().toBuffer();
+  const entry = await create('https://avif.example.com');
+  const res = await upload(entry.id, 'image/avif', avif);
+  assert.equal(res.status, 200);
+  assert.match(res.body.screenshot, /\.avif$/);
+  await call('DELETE', `/api/entries/${entry.id}`);
+});
+
 test('unfurl reads product details from JSON-LD, even far into a big page', async () => {
   const ld = { '@context': 'https://schema.org', '@graph': [{ '@type': 'ProductGroup', name: 'Vest', brand: { '@type': 'Brand', name: 'Acme' }, color: 'Dark Green', category: 'Vests',
     image: ['https:files/broken.jpg', '/a.jpg', { url: 'https://cdn.example/b.jpg' }],

@@ -3,7 +3,7 @@
 
 const norm = s => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const hostOf = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
+export const hostOf = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
 
 // A known brand wins (so "Bronson Mfg. Co." lands on your "Bronson MFG"); then
 // the brand you used on earlier entries from the same shop; then the page's own.
@@ -56,4 +56,30 @@ export function guessFashionFields(info, url, { entries, types, colors }) {
     type: guessOption(types, sources(info.category)),
     color: guessOption(colors, sources(info.color), COLOR_ALIASES)
   };
+}
+
+// "Found via" for links from the usual inspiration sites, matched against your own list.
+export function guessFoundVia(url, options) {
+  const m = hostOf(url).match(/(?:^|\.)(pinterest|dribbble|instagram|reddit)\./);
+  return (m && options.find(o => o.toLowerCase() === m[1])) || '';
+}
+
+// What you changed after autofill, remembered per shop: { host: { type: { guessed: yours } } }.
+// A later guess that equals one you corrected before is swapped for your value.
+const CORRECTED = ['type', 'color'];
+
+export function applyCorrections(guess, url, corrections) {
+  const mine = corrections[hostOf(url)] || {};
+  const out = { ...guess };
+  for (const k of CORRECTED) if (guess[k] && mine[k]?.[guess[k]]) out[k] = mine[k][guess[k]];
+  return out;
+}
+
+// raw = the guess, filled = what autofill wrote, final = what was saved.
+export function recordCorrections(raw, filled, final, url, corrections) {
+  const host = hostOf(url);
+  for (const k of CORRECTED) {
+    if (raw[k] && filled[k] && final[k] && final[k] !== filled[k]) ((corrections[host] ??= {})[k] ??= {})[raw[k]] = final[k];
+  }
+  return corrections;
 }

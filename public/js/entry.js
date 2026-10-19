@@ -2,7 +2,7 @@
 // entry detail modal (screenshot carousel, palette, prev/next, save).
 
 import { state, safeHref, isHttpUrl, faviconImg, colorName, COLOR_NAMES } from './state.js';
-import { guessFashionFields } from './autofill.js';
+import { guessFashionFields, guessFoundVia, applyCorrections, recordCorrections } from './autofill.js';
 import { api } from './api.js';
 import {
   confirm_, toastSuccess, toastError, openModalOverlay, closeModalOverlay, isOpen, openLightbox, setLightboxSrc
@@ -19,12 +19,26 @@ let formSnapshot = null;
 let lastCheckedUrl = '';
 let dupeEntry = null;
 
-export function clearFormSnapshot() { formSnapshot = null; }
+// Leaving the form on purpose (saved, cancelled, discarded) also drops its saved draft.
+export function clearFormSnapshot() {
+  formSnapshot = null;
+  store(draftKey(), null);
+}
 
-// Captured right after the form is populated; compared against on every
-// navigation attempt so edits aren't discarded without a prompt.
-function captureFormSnapshot() {
-  return JSON.stringify({
+// localStorage can be unavailable or full; none of these are worth failing over.
+const load = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
+const store = (key, value) => { try { value == null ? localStorage.removeItem(key) : localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage unavailable */ } };
+const draftKey = () => `omniview-draft-${state.space}`;
+const foundViaKey = () => `omniview-found-via-${state.space}`;
+const CORRECTIONS_KEY = 'omniview-corrections';
+let formBaseline = '';
+let foundViaDefault = '';
+let addAnother = false;
+
+const formatSize = n => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
+
+function formValues() {
+  return {
     title: $('f-title').value,
     brand: comboValue('f-brand'),
     price: $('f-price').value,
@@ -35,23 +49,52 @@ function captureFormSnapshot() {
     note: $('f-note').value,
     favorite: $('f-favorite').checked,
     tags: [...state.formTags],
-    boards: [...state.formBoards],
-    pending: state.pending.length
-  });
+    boards: [...state.formBoards]
+  };
+}
+
+// Captured right after the form is populated; compared against on every
+// navigation attempt so edits aren't discarded without a prompt.
+function captureFormSnapshot() {
+  return JSON.stringify({ ...formValues(), pending: state.pending.length });
+}
+
+function restoreDraft() {
+  const d = load(draftKey(), null);
+  if (!d) return;
+  $('f-title').value = d.title || '';
+  setCombo('f-brand', d.brand);
+  $('f-price').value = d.price || '';
+  $('f-url').value = d.url || '';
+  setCombo('f-type', d.type);
+  setCombo('f-color', d.color);
+  setCombo('f-found-via', d.foundVia);
+  $('f-note').value = d.note || '';
+  $('f-favorite').checked = !!d.favorite;
+  state.formTags.push(...(d.tags || []));
+  state.formBoards = new Set((d.boards || []).filter(id => state.boards.some(b => b.id === id)));
+  renderFormTagPills();
+  updateFormBoardChips();
+  const status = $('unfurl-status');
+  status.style.display = '';
+  status.textContent = 'Restored your unsaved draft (screenshots are not kept).';
 }
 
 export function isFormDirty() {
   return state.view === 'add' && formSnapshot !== null && captureFormSnapshot() !== formSnapshot;
 }
 
-export function openAddForm() {
+// `keep` (Save & add another) carries Type, Found via and boards into the fresh form.
+export function openAddForm({ keep, restore = !keep } = {}) {
   $('f-title').value = '';
   setCombo('f-brand', '');
   $('f-price').value = '';
   $('f-url').value = '';
-  setCombo('f-type', '');
+  setCombo('f-type', keep ? keep.type : '');
   setCombo('f-color', '');
-  setCombo('f-found-via', '');
+  const lastVia = load(foundViaKey(), '');
+  foundViaDefault = keep ? keep.foundVia : state.foundVia.includes(lastVia) ? lastVia : '';
+  setCombo('f-found-via', foundViaDefault);
   $('f-note').value = '';
   $('f-favorite').checked = false;
   showDuplicate(null);
@@ -64,12 +107,14 @@ export function openAddForm() {
   // Mutate in place (not `state.formTags = [...]`) so the array reference
   // captured by setupTagInput's closures stays valid.
   state.formTags.length = 0;
-  state.formBoards = new Set();
+  state.formBoards = new Set(keep && keep.boards);
   clearPending();
 
   renderFormTagPills();
   updateFormBoardChips();
+  formBaseline = JSON.stringify(formValues());
   formSnapshot = captureFormSnapshot();
+  if (restore) restoreDraft(); // after the snapshot, so a restored draft counts as unsaved
 }
 
 // ─── Screenshot queue (uploaded once the entry is saved) ─────────────────────
@@ -110,6 +155,12 @@ function renderPending() {
       renderPending();
     });
     item.append(img, remove);
+    if (p.file) {
+      const size = document.createElement('span');
+      size.className = 'pending-size';
+      size.textContent = formatSize(p.file.size);
+      item.appendChild(size);
+    }
     box.appendChild(item);
   });
 
@@ -186,22 +237,26 @@ async function autofill(url) {
     if ($('f-url').value.trim() !== url) return;
     state.pageInfo = { favicon: info.favicon, forUrl: url };
     const filled = [];
+    const wrote = {};
     const fill = (label, id, value, isCombo) => {
       if (!value) return;
       if (isCombo ? comboValue(id) : $(id).value.trim()) return;
       if (isCombo) setCombo(id, value); else $(id).value = value;
       markAutofilled(id);
       filled.push(label);
+      wrote[label] = value;
     };
     fill('title', 'f-title', info.title);
     if (state.space === 'ui') {
       if (info.themeColor) fill('color', 'f-color', colorName(info.themeColor), true);
     } else {
-      const guess = guessFashionFields(info, url, { entries: state.entries, types: state.types, colors: COLOR_NAMES });
+      const raw = guessFashionFields(info, url, { entries: state.entries, types: state.types, colors: COLOR_NAMES });
+      const guess = applyCorrections(raw, url, load(CORRECTIONS_KEY, {}));
       fill('brand', 'f-brand', guess.brand, true);
       fill('price', 'f-price', guess.price);
       fill('type', 'f-type', guess.type, true);
       fill('color', 'f-color', guess.color, true);
+      state.pageInfo.guess = { raw, wrote };
     }
     const images = info.images || [];
     const queueFirst = images.length && !state.pending.length;
@@ -213,7 +268,7 @@ async function autofill(url) {
     renderCandidateImages(queueFirst ? images.slice(1) : images);
     status.textContent = filled.length ? `Filled: ${filled.join(', ')}.` : 'Nothing new to fill in.';
   } catch (err) {
-    if ($('f-url').value.trim() === url) status.textContent = `Couldn't read the page (${err.message}).`;
+    if ($('f-url').value.trim() === url) status.textContent = /blocked/.test(err.message) ? `${err.message}.` : `Couldn't read the page (${err.message}).`;
   }
 }
 
@@ -226,8 +281,19 @@ function onUrlEntered() {
   $('unfurl-status').style.display = 'none';
   clearAutofillUi();
   if (!isHttpUrl(url)) return;
+  // Found via comes from the host alone, so it works even when the page can't be read.
+  const via = guessFoundVia(url, state.foundVia);
+  const cur = comboValue('f-found-via');
+  if (via && (!cur || cur === foundViaDefault)) { setCombo('f-found-via', via); markAutofilled('f-found-via'); }
   checkDuplicate(url);
   autofill(url);
+}
+
+// A URL pasted outside the form: fills the URL field (when it is still empty) and runs autofill.
+export function pasteUrlIntoForm(url) {
+  if ($('f-url').value.trim()) return toastError('Finish or discard the current entry first.');
+  $('f-url').value = url;
+  onUrlEntered();
 }
 
 export function setupAddForm() {
@@ -254,23 +320,45 @@ export function setupAddForm() {
   $('dupe-open').addEventListener('click', () => { if (dupeEntry) openDetail(dupeEntry.id); });
   $('dupe-add').addEventListener('click', () => { state.allowDuplicate = true; showDuplicate(null); });
 
+  $('paste-url').addEventListener('click', async () => {
+    let text = '';
+    try { text = (await navigator.clipboard.readText()).trim(); } catch { /* permission denied */ }
+    if (isHttpUrl(text)) pasteUrlIntoForm(text); else toastError('The clipboard does not hold a URL.');
+  });
+
+  // Draft autosave: a crash or closed tab still leaves the half-filled entry behind.
+  setInterval(() => {
+    if (state.view !== 'add' || formSnapshot === null) return;
+    store(draftKey(), JSON.stringify(formValues()) === formBaseline ? null : formValues());
+  }, 2000);
+
   // Tag search
   setupTagInput('tag-search', 'tag-dropdown', state.formTags, renderFormTagPills);
 
   // Cancel
   $('form-cancel').addEventListener('click', () => {
-    formSnapshot = null;
+    clearFormSnapshot();
     navigate('browse');
+  });
+  $('form-submit-another').addEventListener('click', () => {
+    if (!$('entry-form').reportValidity()) return;
+    addAnother = true;
+    $('entry-form').requestSubmit();
   });
 
   // Submit
   $('entry-form').addEventListener('submit', async e => {
     e.preventDefault();
+    const another = addAnother;
+    addAnother = false;
     const url = $('f-url').value.trim();
     if (!url) return;
 
-    const btn = $('form-submit');
-    btn.disabled = true;
+    const btn = another ? $('form-submit-another') : $('form-submit');
+    const btnText = btn.textContent;
+    const buttons = [$('form-submit'), $('form-submit-another')];
+    buttons.forEach(b => { b.disabled = true; });
+    btn.textContent = 'Saving…';
     try {
       const payload = {
         title: $('f-title').value.trim(),
@@ -297,7 +385,9 @@ export function setupAddForm() {
         return;
       }
 
+      let n = 0;
       for (const p of state.pending) {
+        btn.textContent = `Uploading ${++n} of ${state.pending.length}…`;
         try {
           if (p.file) await api.uploadScreenshot(entry.id, p.file);
           else await api.post(`/api/entries/${entry.id}/screenshot-url`, { url: p.url });
@@ -308,14 +398,29 @@ export function setupAddForm() {
       // Re-read so the entry has its cover image and palette.
       state.entries.unshift(state.pending.length ? await api.get(`/api/entries/${entry.id}`) : entry);
 
-      clearPending();
-      formSnapshot = null;
-      navigate('browse');
-      toastSuccess('Entry added.');
+      if (payload.found_via) store(foundViaKey(), payload.found_via);
+      const pi = state.pageInfo;
+      if (pi && pi.guess && pi.forUrl === url) {
+        store(CORRECTIONS_KEY, recordCorrections(pi.guess.raw, pi.guess.wrote, { type: payload.type, color: payload.color }, url, load(CORRECTIONS_KEY, {})));
+      }
+
+      if (another) {
+        const keep = { type: payload.type || '', foundVia: payload.found_via, boards: [...state.formBoards] };
+        clearFormSnapshot();
+        openAddForm({ keep });
+        $('f-url').focus();
+        toastSuccess('Entry added. Ready for the next one.');
+      } else {
+        clearPending();
+        clearFormSnapshot();
+        navigate('browse');
+        toastSuccess('Entry added.');
+      }
     } catch (err) {
       toastError(err.message);
     } finally {
-      btn.disabled = false;
+      buttons.forEach(b => { b.disabled = false; });
+      btn.textContent = btnText;
     }
   });
 }

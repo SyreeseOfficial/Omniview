@@ -1,7 +1,7 @@
 // Entry point: boots the app and owns navigation, theme, the sidebar, global
 // keyboard shortcuts, and paste / drag-and-drop of images.
 
-import { state, SPACES } from './state.js';
+import { state, SPACES, isHttpUrl } from './state.js';
 import { api } from './api.js';
 import {
   isOpen, confirm_, toastError, setupConfirmModal, setupPromptModal, setupLightbox, closeLightbox
@@ -13,7 +13,7 @@ import {
 import { setupBoards, renderBoards, closeBoardPicker } from './boards.js';
 import {
   setupAddForm, setupDetailModal, openAddForm, isFormDirty, clearFormSnapshot, closeDetail,
-  addPendingFiles, applyDetailScreenshots, stepDetail, stepShot
+  addPendingFiles, applyDetailScreenshots, pasteUrlIntoForm, stepDetail, stepShot
 } from './entry.js';
 import { setupSettings, renderSettings } from './settings.js';
 
@@ -81,7 +81,14 @@ function receiveImages(files) {
 function setupImageInput() {
   document.addEventListener('paste', e => {
     const items = (e.clipboardData && e.clipboardData.items) || [];
-    receiveImages([...items].filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean));
+    const files = [...items].filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean);
+    receiveImages(files);
+    // A URL pasted outside any field starts a new entry (pasting into a field stays a normal paste).
+    if (files.length || anyDialogOpen() || isOpen('detail-overlay') || e.target.closest('input, textarea, select, [contenteditable]')) return;
+    const text = ((e.clipboardData && e.clipboardData.getData('text')) || '').trim();
+    if (!isHttpUrl(text)) return;
+    if (state.view !== 'add') navigate('add');
+    pasteUrlIntoForm(text);
   });
 
   // Dropping an image anywhere on the window works, not just on the drop zone.
@@ -249,7 +256,11 @@ function setupKeyboardShortcuts() {
     // Ctrl/Cmd+Enter saves whatever form or modal you're typing in.
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       const form = e.target.closest('form');
-      if (form) { e.preventDefault(); form.requestSubmit(); return; }
+      if (form) {
+        e.preventDefault();
+        if (e.shiftKey && form.id === 'entry-form') $('form-submit-another').click(); else form.requestSubmit();
+        return;
+      }
       if (e.target.closest('#detail-overlay')) { e.preventDefault(); $('detail-save').click(); }
       return;
     }

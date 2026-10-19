@@ -16,20 +16,7 @@ All items from this section are under **Completed** or **Skipped** at the bottom
 
 ## 2. Capture & autofill
 
-- [ ] **[H]** Retry `/api/unfurl` with a browser-like `User-Agent` when the first attempt returns 403/429. The fixed `compatible; Omniview/1.0` UA (`server.js:572`) is exactly what shops block, and fashion sites are the main use.
-- [ ] **[H]** Ignore bot-wall pages: if the title is "Just a moment...", "Access denied", "Attention Required", or a CAPTCHA, don't fill it into the title field; say "This site blocked the preview" instead.
-- [ ] **[H]** Accept AVIF. `ALLOWED_IMAGE_TYPES` lacks `image/avif` (`server.js:176`), and more shops serve AVIF `og:image`s, which fails with "Only PNG, JPEG, WEBP, or GIF". `sharp` already decodes it.
-- [ ] **[M]** Pasting a URL anywhere (not only into the URL field) opens the Add form with it filled and autofill running. The global paste handler (`main.js` `setupImageInput`) only takes files.
-- [ ] **[M]** Dragging an image from another browser tab drops a URL, not a file, so `receiveImages` ignores it. Detect `text/uri-list` and route it through `/screenshot-url`.
-- [ ] **[M]** "Save & add another" (Ctrl+Shift+Enter): keep the form open, clear URL/title only, keep Type/Found via/board. Pairs with the Obsidian-to-Omniview batching workflow.
-- [ ] **[M]** Autosave the Add form draft to `localStorage`. `beforeunload` warns but a crash or accidental tab close still loses a half-filled entry.
-- [ ] **[M]** Offer `og:description` as a note suggestion (UI space), marked "autofilled" like the other fields. `pageInfo` already reads meta tags.
-- [ ] **[M]** Default "Found via" to the last value used, or guess it from the host (`pinterest.*` → Pinterest, `dribbble.com` → Dribbble, `instagram.com`, `reddit.com`).
-- [ ] **[L]** Crop-before-save: trim a pasted screenshot's browser chrome with a simple rectangle crop in the pending-shots strip.
-- [ ] **[L]** "Paste from clipboard" button in the Add form for URLs (one click instead of focus + Ctrl+V).
-- [ ] **[L]** Show progress and file size for pending uploads, and the stage ("Uploading 2 of 3...") on save; today the Save button just waits.
-- [ ] **[L]** Decode `<title>`/meta entities fully (`decodeEntities` handles a handful; `&nbsp;`, `&rsquo;`, `&#x27;` hex forms slip through). A tiny table or `he`-style lookup covers it.
-- [ ] **[L]** Remember, per host, which autofilled field you corrected (e.g. always change Type for this shop) and bias the next guess. `guessBrand` already does this for brand.
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ## 3. Browse & search
 
@@ -259,6 +246,17 @@ Already listed there, but I'd move them up:
 - [x] **[M]** Brand filter dropdown with counts ("Dr. Martens 4"). Brand is searchable but not filterable.
 - [x] **[M]** Group-by-brand / group-by-type headings in the grid, so the wishlist reads like a store.
 - [x] **[L]** "Hide bought" toggle in fashion that filters out a tag named `bought`, if you keep that convention instead of a status field.
+- [x] **[H]** Retry `/api/unfurl` with a browser-like `User-Agent` when the first attempt returns 403/429. The fixed `compatible; Omniview/1.0` UA (`server.js:572`) is exactly what shops block, and fashion sites are the main use.
+- [x] **[H]** Ignore bot-wall pages: if the title is "Just a moment...", "Access denied", "Attention Required", or a CAPTCHA, don't fill it into the title field; say "This site blocked the preview" instead.
+- [x] **[H]** Accept AVIF. `ALLOWED_IMAGE_TYPES` lacks `image/avif` (`server.js:176`), and more shops serve AVIF `og:image`s, which fails with "Only PNG, JPEG, WEBP, or GIF". `sharp` already decodes it.
+- [x] **[M]** Pasting a URL anywhere (not only into the URL field) opens the Add form with it filled and autofill running. The global paste handler (`main.js` `setupImageInput`) only takes files.
+- [x] **[M]** "Save & add another" (Ctrl+Shift+Enter): keep the form open, clear URL/title only, keep Type/Found via/board. Pairs with the Obsidian-to-Omniview batching workflow.
+- [x] **[M]** Autosave the Add form draft to `localStorage`. `beforeunload` warns but a crash or accidental tab close still loses a half-filled entry.
+- [x] **[M]** Default "Found via" to the last value used, or guess it from the host (`pinterest.*` → Pinterest, `dribbble.com` → Dribbble, `instagram.com`, `reddit.com`).
+- [x] **[L]** "Paste from clipboard" button in the Add form for URLs (one click instead of focus + Ctrl+V).
+- [x] **[L]** Show progress and file size for pending uploads, and the stage ("Uploading 2 of 3...") on save; today the Save button just waits.
+- [x] **[L]** Decode `<title>`/meta entities fully (`decodeEntities` handles a handful; `&nbsp;`, `&rsquo;`, `&#x27;` hex forms slip through). A tiny table or `he`-style lookup covers it.
+- [x] **[L]** Remember, per host, which autofilled field you corrected (e.g. always change Type for this shop) and bias the next guess. `guessBrand` already does this for brand.
 
 ## Skipped
 
@@ -277,3 +275,6 @@ Parked for now, not rejected.
 - [ ] **[L]** Seed a few optional fashion tags (Formal, Casual, Workwear, Fall, Gift) offered once in Settings. The fashion library starts with zero tags, so the Tags filter is empty.
 - [ ] **[L]** Board total + "cheapest / priciest" line on fashion boards (outfits, gift lists).
 - [ ] **[L]** Copy a fashion list as Markdown (`- [Name](url) — Brand — $120`) for pasting into Obsidian or sending to someone.
+- [ ] **[M]** Dragging an image from another browser tab drops a URL, not a file, so `receiveImages` ignores it. Detect `text/uri-list` and route it through `/screenshot-url`.
+- [ ] **[M]** Offer `og:description` as a note suggestion (UI space), marked "autofilled" like the other fields. `pageInfo` already reads meta tags.
+- [ ] **[L]** Crop-before-save: trim a pasted screenshot's browser chrome with a simple rectangle crop in the pending-shots strip.

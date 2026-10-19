@@ -303,7 +303,10 @@
       <div class="form-grid">
         <div class="form-group form-group-full">
           <label for="f-url">URL <span class="required">*</span></label>
-          <input type="url" id="f-url" placeholder="https://example.com" required>
+          <div class="url-row">
+            <input type="url" id="f-url" placeholder="https://example.com" required>
+            <button type="button" class="btn-sm" id="paste-url">Paste</button>
+          </div>
           <div class="dupe-warning" id="dupe-warning" style="display:none">
             <span>⚠ Already saved.</span>
             <button type="button" class="link-btn" id="dupe-open">Open it</button>
@@ -375,6 +378,7 @@
 
       <div class="form-actions">
         <button type="button" class="btn-ghost" id="form-cancel">Cancel</button>
+        <button type="button" class="btn-ghost" id="form-submit-another" title="Ctrl+Shift+Enter">Save &amp; add another</button>
         <button type="submit" class="btn-primary" id="form-submit">Save Entry</button>
       </div>
     </form>
@@ -510,6 +514,7 @@
           <div class="settings-row"><span>Open a random entry</span><kbd class="kbd">R</kbd></div>
           <div class="settings-row"><span>Previous / next entry (or screenshot in the lightbox)</span><span><kbd class="kbd">←</kbd> <kbd class="kbd">→</kbd></span></div>
           <div class="settings-row"><span>Save form / add tag</span><span><kbd class="kbd">Ctrl</kbd> + <kbd class="kbd">Enter</kbd></span></div>
+          <div class="settings-row"><span>Save and add another</span><span><kbd class="kbd">Ctrl</kbd> + <kbd class="kbd">Shift</kbd> + <kbd class="kbd">Enter</kbd></span></div>
         </div>
       </div>
 

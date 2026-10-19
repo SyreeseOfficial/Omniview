@@ -173,7 +173,7 @@ Object.keys(SPACES).forEach(loadDB);
 // Extension is picked from the allowlisted mimetype, never the client-supplied
 // filename — an .svg can carry a <script> and gets served same-origin from
 // /uploads, so letting the client dictate the extension is a stored-XSS vector.
-const ALLOWED_IMAGE_TYPES = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' };
+const ALLOWED_IMAGE_TYPES = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif', 'image/avif': '.avif' };
 const MAX_SCREENSHOTS = 10;
 
 const thumbName = file => file.replace(/\.[^.]+$/, '.webp');
@@ -566,11 +566,15 @@ app.post('/api/entries/bulk', (req, res) => {
 // ─── Page info (auto-fill from URL) ───────────────────────────────────────────
 // Fetches with a timeout and a size cap. `truncate` keeps what was read when the
 // cap is hit (fine for HTML, where <head> comes first); otherwise it's an error.
+const BOT_UA = 'Mozilla/5.0 (compatible; Omniview/1.0)';
+// Shops block unknown bots; a 403/429 is retried once as a desktop browser.
+const BROWSER_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+
 async function fetchCapped(url, { maxBytes, truncate }) {
-  const res = await fetch(url, {
-    signal: AbortSignal.timeout(8000),
-    headers: { 'user-agent': 'Mozilla/5.0 (compatible; Omniview/1.0)' }
-  });
+  const get = userAgent => fetch(url, { signal: AbortSignal.timeout(8000), headers: { 'user-agent': userAgent, accept: '*/*' } });
+  let res = await get(BOT_UA);
+  if (res.status === 403 || res.status === 429) res = await get(BROWSER_UA);
+  if (res.status === 403 || res.status === 429) throw httpError(502, 'This site blocked the preview');
   if (!res.ok) throw httpError(502, `The site answered ${res.status}`);
   const type = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
   const chunks = [];
@@ -586,9 +590,19 @@ async function fetchCapped(url, { maxBytes, truncate }) {
   return { type, buffer: Buffer.concat(chunks), finalUrl: res.url };
 }
 
-const decodeEntities = s => s
-  .replace(/&quot;/g, '"').replace(/&#0*39;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-  .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(+n)).replace(/&amp;/g, '&');
+// Numeric forms (decimal and hex) plus the named entities that turn up in page titles.
+const NAMED_ENTITIES = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”',
+  ndash: '–', mdash: '—', hellip: '…', copy: '©', reg: '®', trade: '™', middot: '·', bull: '•', deg: '°',
+  eacute: 'é', egrave: 'è', agrave: 'à', aacute: 'á', ouml: 'ö', uuml: 'ü', auml: 'ä', ntilde: 'ñ', ccedil: 'ç',
+  euro: '€', pound: '£', yen: '¥', cent: '¢', times: '×', laquo: '«', raquo: '»'
+};
+// One pass, so "&amp;lt;" becomes "&lt;" and not "<".
+const decodeEntities = s => s.replace(/&(?:#(\d+)|#x([0-9a-f]+)|([a-z][a-z0-9]*));/gi, (m, dec, hex, name) => {
+  if (name) return NAMED_ENTITIES[name] ?? NAMED_ENTITIES[name.toLowerCase()] ?? m;
+  const cp = dec ? +dec : parseInt(hex, 16);
+  return cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : m;
+});
 
 function attrs(tag) {
   const out = {};
@@ -666,6 +680,8 @@ function pageInfo(html, baseUrl) {
   };
 }
 
+const BOT_WALL_TITLE = /^(just a moment|access denied|attention required|are you a (human|robot)|robot or human|please verify|security check)|captcha/i;
+
 app.get('/api/unfurl', async (req, res) => {
   const url = cleanHttpUrl(typeof req.query.url === 'string' ? req.query.url : '', 'url');
   let page;
@@ -675,7 +691,10 @@ app.get('/api/unfurl', async (req, res) => {
     throw err.status ? err : httpError(502, 'Could not reach that site');
   }
   if (!/html/.test(page.type)) throw httpError(502, 'That URL is not a web page');
-  res.json(pageInfo(page.buffer.toString('utf8'), page.finalUrl));
+  const info = pageInfo(page.buffer.toString('utf8'), page.finalUrl);
+  // Some walls answer 200 with a challenge page; its title would otherwise land in the form.
+  if (BOT_WALL_TITLE.test(info.title)) throw httpError(502, 'This site blocked the preview');
+  res.json(info);
 });
 
 // Downloads an image from a URL (e.g. the page's og:image) and attaches it like an upload.
@@ -688,7 +707,7 @@ app.post('/api/entries/:id/screenshot-url', async (req, res) => {
     throw err.status ? err : httpError(502, 'Could not download that image');
   }
   const ext = ALLOWED_IMAGE_TYPES[img.type];
-  if (!ext) throw httpError(400, 'Only PNG, JPEG, WEBP, or GIF images are allowed');
+  if (!ext) throw httpError(400, 'Only PNG, JPEG, WEBP, GIF, or AVIF images are allowed');
   const file = `${uuidv4()}${ext}`;
   fs.writeFileSync(path.join(UPLOADS_DIR, file), img.buffer);
   const entry = await attachScreenshot(req.params.id, file);
@@ -955,7 +974,7 @@ app.post('/api/reset', (req, res) => {
 // JSON response instead of Express's default HTML stack trace.
 app.use((err, req, res, next) => {
   if (err.message === 'UNSUPPORTED_FILE_TYPE') {
-    return res.status(400).json({ error: 'Only PNG, JPEG, WEBP, or GIF images are allowed' });
+    return res.status(400).json({ error: 'Only PNG, JPEG, WEBP, GIF, or AVIF images are allowed' });
   }
   if (err instanceof multer.MulterError) {
     return res.status(400).json({ error: err.message });
