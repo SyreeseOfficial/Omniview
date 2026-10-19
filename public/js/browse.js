@@ -2,27 +2,18 @@
 // actions, favorites, and the sidebar counters.
 
 import {
-  state, SPACES, COLORS, PLACEHOLDER_SVG, OPEN_ICON, COPY_ICON, BOARD_ICON, byName, cleanUrl, titleOf, safeHref, thumbImg, faviconImg,
-  colorName, defaultFilters, brandPrice, isBought, spaceKey, priceOf, priceTotal, boardLabel, escHtml
+  state, COLORS, COLOR_NAMES, PLACEHOLDER_SVG, OPEN_ICON, byName, cleanUrl, titleOf, safeHref, thumbImg, faviconImg, coverOf,
+  colorName, defaultFilters, brandPrice, priceDrop, isBought, spaceKey, priceOf, priceTotal, boardLabel, escHtml, hasFoundVia
 } from './state.js';
 import { api } from './api.js';
-import { inAddedRange } from './lib.js';
-import { confirm_, toastSuccess, toastError, showToast, withTransition } from './modals.js';
+import { inAddedRange, fuzzyMatch } from './lib.js';
+import { hostOf, guessFashionFields, cleanTitle } from './autofill.js';
+import { confirm_, prompt_, toastSuccess, toastError, showToast } from './modals.js';
 import { openDetail } from './entry.js';
+import { openTriage } from './triage.js';
 import { removeEntryFromBoard, reorderInBoard, renderSidebarBoards } from './boards.js';
-import { switchSpace } from './main.js';
 
 const $ = id => document.getElementById(id);
-
-// ═══════════════════════════════════════════ RECENTLY VIEWED ══
-function readRecent() {
-  try { return JSON.parse(localStorage.getItem(spaceKey('omniview-recent'))) || []; } catch { return []; }
-}
-
-export function recordRecent(id) {
-  const ids = [id, ...readRecent().filter(x => x !== id)].slice(0, 12);
-  try { localStorage.setItem(spaceKey('omniview-recent'), JSON.stringify(ids)); } catch { /* storage unavailable */ }
-}
 
 // ═══════════════════════════════════════════ SEARCH ══
 export function setupSearch() {
@@ -46,9 +37,9 @@ export function setupSearch() {
 }
 
 // ═══════════════════════════════════════════ FILTERS ══
-// Search text, filters, sort, grouping, card size and layout all persist across
-// reloads, the same way theme does. Each space keeps its own, and this is also
-// what runs when the space is switched.
+// Filters, sort, grouping, card size and layout persist across reloads, the same way
+// theme does (the search text does not: last week's query would greet you with an
+// empty list). Each space keeps its own, and this is also what runs when the space is switched.
 const LAYOUTS = ['gallery', 'masonry', 'list'];
 
 export function loadPersistedFilters() {
@@ -57,10 +48,9 @@ export function loadPersistedFilters() {
   state.group = '';
   state.cardSize = 220;
   state.layout = state.space === 'fashion' ? 'masonry' : 'gallery'; // product shots are mostly portrait
-  alsoCache = null;
   try {
     const saved = JSON.parse(localStorage.getItem(spaceKey('omniview-filters')));
-    if (saved && saved.filters) Object.assign(state.filters, saved.filters);
+    if (saved && saved.filters) Object.assign(state.filters, { ...saved.filters, q: '' });
     if (saved && saved.sort) state.sort = saved.sort;
     if (saved && saved.group) state.group = saved.group;
     if (saved && saved.cardSize) state.cardSize = saved.cardSize;
@@ -69,20 +59,13 @@ export function loadPersistedFilters() {
   } catch { /* ignore malformed/missing storage */ }
   $('search-input').value = state.filters.q;
   $('search-clear').style.display = state.filters.q ? '' : 'none';
-  const compact = () => document.documentElement.dataset.density === 'compact';
-  document.documentElement.dataset.density = localStorage.getItem('omniview-density') === 'compact' ? 'compact' : '';
-  $('density-toggle').addEventListener('click', () => {
-    document.documentElement.dataset.density = compact() ? '' : 'compact';
-    try { localStorage.setItem('omniview-density', document.documentElement.dataset.density); } catch { /* storage unavailable */ }
-    syncLayoutButtons();
-  });
   syncLayoutButtons();
   applyCardSize();
 }
 
 function persistFilters() {
   try {
-    localStorage.setItem(spaceKey('omniview-filters'), JSON.stringify({ filters: state.filters, sort: state.sort, group: state.group, cardSize: state.cardSize }));
+    localStorage.setItem(spaceKey('omniview-filters'), JSON.stringify({ filters: { ...state.filters, q: '' }, sort: state.sort, group: state.group, cardSize: state.cardSize }));
   } catch { /* storage unavailable */ }
 }
 
@@ -94,11 +77,6 @@ export function setupFilters() {
 
   $('filter-bought').addEventListener('click', () => {
     state.filters.hideBought = !state.filters.hideBought;
-    renderBrowse();
-  });
-
-  $('filter-recent').addEventListener('click', () => {
-    state.filters.recent = !state.filters.recent;
     renderBrowse();
   });
 
@@ -116,17 +94,29 @@ export function setupFilters() {
     renderBrowse();
   });
 
-  // Clears every filter but the search text, tag mode and the both-libraries switch.
+  // Clears every filter but the search text and tag mode.
   $('filter-clear').addEventListener('click', () => {
-    const { q, tagMode, both } = state.filters;
-    state.filters = { ...defaultFilters(state.space), q, tagMode, both };
+    const { q, tagMode } = state.filters;
+    state.filters = { ...defaultFilters(state.space), q, tagMode };
     renderBrowse();
   });
 
-  $('filter-both').addEventListener('click', () => {
-    state.filters.both = !state.filters.both;
-    renderBrowse();
+  $('brand-rename-btn').addEventListener('click', () => {
+    const old = state.filters.brand;
+    $('filter-brand-dd').open = false;
+    prompt_(`Rename “${old}” to (an existing brand merges them):`, old, async name => {
+      if (!name || name === old) return;
+      try {
+        const { updated } = await api.put(`/api/brands/${encodeURIComponent(old)}`, { newName: name });
+        state.filters.brand = name;
+        await reloadEntries();
+        toastSuccess(`${updated} ${updated === 1 ? 'item' : 'items'} now ${name}.`);
+      } catch (err) { toastError(err.message); }
+    });
   });
+
+  $('triage-btn').addEventListener('click', openTriage);
+  $('refresh-prices-btn').addEventListener('click', refreshPrices);
 
   $('filter-tags-search').addEventListener('input', e => {
     tagQuery = e.target.value.trim().toLowerCase();
@@ -140,25 +130,6 @@ export function setupFilters() {
     state.filters.added = state.filters.from || state.filters.to ? 'custom' : '';
     renderBrowse();
   }));
-
-  // A card from the other library: switch to it with the same search and open the entry.
-  $('also-grid').addEventListener('click', async e => {
-    const card = e.target.closest('[data-id]');
-    if (!card || e.target.closest('a')) return;
-    e.stopPropagation();
-    const { q } = state.filters;
-    const other = otherSpace();
-    await switchSpace(other);
-    if (state.space !== other) return;
-    state.filters.q = q;
-    $('search-input').value = q;
-    $('search-clear').style.display = q ? '' : 'none';
-    renderBrowse();
-    openDetail(card.dataset.id);
-  }, true);
-
-  document.addEventListener('click', e => { if (quickMenu && !quickMenu.contains(e.target)) closeQuickMenu(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeQuickMenu(); });
 
   $('random-btn').addEventListener('click', () => {
     const pool = sortEntries(applyFilters(state.entries));
@@ -216,6 +187,7 @@ function renderTypeFilter() {
 }
 
 function renderBrandFilter() {
+  $('brand-rename-btn').style.display = state.filters.brand ? '' : 'none';
   const counts = facetCounts('brand', e => [e.brand]);
   const brands = [...new Set(state.entries.map(e => e.brand).filter(Boolean))];
   renderSingleFilter(
@@ -223,6 +195,16 @@ function renderBrandFilter() {
     brands.sort(byName).map(v => ({ value: v, label: v, count: counts.get(v) || 0 })),
     state.filters.brand,
     v => { state.filters.brand = v; renderBrowse(); }
+  );
+}
+
+function renderShopFilter() {
+  const counts = facetCounts('shop', e => [hostOf(e.url)]);
+  renderSingleFilter(
+    'filter-shop-dd', 'filter-shop-list', 'filter-shop-label', 'All Shops',
+    [...counts.keys()].filter(Boolean).sort(byName).map(v => ({ value: v, label: v, count: counts.get(v) || 0 })),
+    state.filters.shop,
+    v => { state.filters.shop = v; renderBrowse(); }
   );
 }
 
@@ -331,10 +313,11 @@ const SORT_OPTIONS = [
   { value: 'oldest', label: 'Oldest' },
   { value: 'az', label: 'A–Z' },
   { value: 'type', label: 'By Type' },
-  { value: 'brand', label: 'By Brand', fashion: true },
+  { value: 'brand', label: 'Brand A–Z', fashion: true },
   { value: 'price-asc', label: 'Price: Low → High', fashion: true },
   { value: 'price-desc', label: 'Price: High → Low', fashion: true },
   { value: 'favorites', label: 'Favorites first' },
+  { value: 'edited', label: 'Recently edited' },
   { value: 'shuffle', label: 'Shuffle' }
 ];
 const visibleSorts = () => SORT_OPTIONS.filter(o => !o.fashion || state.space === 'fashion');
@@ -347,6 +330,7 @@ const GROUPS = {
   month: { label: 'Month added', key: e => monthKey(e.date_added), title: k => new Date(`${k}-15`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) },
   type: { label: 'Type', key: e => e.type, none: 'No type' },
   brand: { label: 'Brand', key: e => e.brand, none: 'No brand', fashion: true },
+  shop: { label: 'Shop', key: e => hostOf(e.url), none: 'No shop', fashion: true },
   tag: { label: 'Tag', key: e => e.style_tags[0], none: 'No tags' },
   board: { label: 'Board', key: e => boardName(e.boards[0]), none: 'No board' }
 };
@@ -384,14 +368,7 @@ const rankOf = e => {
   return shuffleRank.get(e.id);
 };
 
-// Pinned entries stay on top whatever the sort (Array.sort is stable, so each half keeps its order).
-const pinnedFirst = list => list.sort((a, b) => b.pinned - a.pinned);
-
 function sortEntries(entries) {
-  return pinnedFirst(sortBy(entries));
-}
-
-function sortBy(entries) {
   const list = [...entries];
   const byNewest = (a, b) => new Date(b.date_added) - new Date(a.date_added);
   switch (state.sort) {
@@ -402,6 +379,7 @@ function sortBy(entries) {
     case 'price-asc': return list.sort(byPrice(1));
     case 'price-desc': return list.sort(byPrice(-1));
     case 'favorites': return list.sort((a, b) => b.favorite - a.favorite || byNewest(a, b));
+    case 'edited': return list.sort((a, b) => new Date(b.updated_at || b.date_added) - new Date(a.updated_at || a.date_added));
     case 'shuffle': return list.sort((a, b) => rankOf(a) - rankOf(b));
     default: return list.sort(byNewest);
   }
@@ -438,17 +416,19 @@ const matchesQuery = (e, q) =>
   e.note.toLowerCase().includes(q) ||
   e.style_tags.some(t => t.toLowerCase().includes(q));
 
-// `skip` leaves one filter out (type, brand, via, board or tags), for the facet counts.
-function applyFilters(entries, skip = '') {
+// `skip` leaves one filter out (type, brand, shop, via, board or tags), for the facet counts;
+// `noQuery` leaves the search text out (the fuzzy fallback matches that itself).
+function applyFilters(entries, skip = '', noQuery = false) {
   let list = entries;
   const f = state.filters;
-  if (f.q) {
+  if (f.q && !noQuery) {
     const q = f.q.toLowerCase();
     list = list.filter(e => matchesQuery(e, q));
   }
   if (f.type && skip !== 'type') list = list.filter(e => e.type === f.type);
   if (f.brand && skip !== 'brand') list = list.filter(e => e.brand === f.brand);
-  if (f.via && skip !== 'via') list = list.filter(e => e.found_via === f.via);
+  if (f.shop && skip !== 'shop') list = list.filter(e => hostOf(e.url) === f.shop);
+  if (f.via && skip !== 'via' && hasFoundVia()) list = list.filter(e => e.found_via === f.via);
   if (f.added) list = list.filter(e => inAddedRange(e.date_added, f));
   if (f.hideBought) list = list.filter(e => !isBought(e));
   if (f.tags.length && skip !== 'tags') {
@@ -462,10 +442,6 @@ function applyFilters(entries, skip = '') {
     list = list.filter(e => e.color === f.color || (fromPalette && e.palette.slice(0, 3).some(h => colorName(h) === f.color)));
   }
   if (f.favorite) list = list.filter(e => e.favorite);
-  if (f.recent) {
-    const recent = readRecent();
-    list = list.filter(e => recent.includes(e.id)).sort((a, b) => recent.indexOf(a.id) - recent.indexOf(b.id));
-  }
   return list;
 }
 
@@ -476,9 +452,10 @@ function filterChips() {
   const add = (text, drop) => chips.push({ text, drop });
   if (f.type) add(`type: ${f.type}`, () => ({ type: '' }));
   if (f.brand) add(`brand: ${f.brand}`, () => ({ brand: '' }));
+  if (f.shop) add(`shop: ${f.shop}`, () => ({ shop: '' }));
   f.tags.forEach(t => add(`tag: ${t}`, () => ({ tags: state.filters.tags.filter(x => x !== t) })));
   if (f.board) add(`board: ${boardName(f.board) || '?'}`, () => ({ board: '' }));
-  if (f.via) add(`via: ${f.via}`, () => ({ via: '' }));
+  if (f.via && hasFoundVia()) add(`via: ${f.via}`, () => ({ via: '' }));
   if (f.color) add(`color: ${f.color}`, () => ({ color: '' }));
   if (f.added) add(`added: ${f.added === 'custom' ? `${f.from || '…'} → ${f.to || '…'}` : `this ${f.added}`}`, () => ({ added: '', from: '', to: '' }));
   return chips;
@@ -533,6 +510,7 @@ export function renderBrowse() {
   const chips = filterChips();
   renderTypeFilter();
   renderBrandFilter();
+  renderShopFilter();
   renderTagFilters();
   renderBoardFilters();
   renderViaFilter();
@@ -541,15 +519,21 @@ export function renderBrowse() {
   renderSortFilter();
   renderGroupFilter();
   renderChips(chips);
-  [['filter-fav', f.favorite], ['filter-bought', f.hideBought], ['filter-recent', f.recent], ['filter-both', f.both]].forEach(([id, on]) => {
+  [['filter-fav', f.favorite], ['filter-bought', f.hideBought]].forEach(([id, on]) => {
     $(id).classList.toggle('active', on);
     $(id).setAttribute('aria-pressed', String(on));
   });
-  $('filter-both').textContent = `Also in ${SPACES[otherSpace()]}`;
-  $('filter-clear').style.display = chips.length || f.favorite || f.recent || f.hideBought !== defaultFilters(state.space).hideBought ? '' : 'none';
+  $('filter-clear').style.display = chips.length || f.favorite || f.hideBought !== defaultFilters(state.space).hideBought ? '' : 'none';
+  $('triage-btn').style.display = state.entries.some(e => !e.style_tags.length) ? '' : 'none'; // only shown in the UI library (.ui-only)
 
-  const matched = applyFilters(state.entries);
-  const filtered = f.recent ? matched : sortEntries(matched); // "recent" keeps most-recently-viewed first
+  let matched = applyFilters(state.entries);
+  // A typo should not read as "nothing": retry the search allowing one slip per word.
+  let fuzzy = false;
+  if (!matched.length && f.q) {
+    matched = applyFilters(state.entries, '', true).filter(e => fuzzyMatch(e, f.q));
+    fuzzy = matched.length > 0;
+  }
+  const filtered = sortEntries(matched);
   const groups = groupEntries(filtered);
   const ordered = groups.flatMap(([, list]) => list); // on-screen order, which grouping can change
   if (state.view === 'browse') state.navIds = ordered.map(e => e.id);
@@ -569,31 +553,37 @@ export function renderBrowse() {
   $('browse-empty').style.display = filtered.length === 0 ? '' : 'none';
   $('browse-onboarding').style.display = state.entries.length === 0 ? '' : 'none';
   $('browse-no-match').style.display = state.entries.length === 0 ? 'none' : '';
-  $('result-count').textContent = [`${filtered.length} of ${state.entries.length}`, priceTotal(filtered)].filter(Boolean).join(' · ');
+  if (!filtered.length && state.entries.length) renderNoMatchFixes();
+  $('result-count').textContent = [`${filtered.length} of ${state.entries.length}`, fuzzy && 'close matches', priceTotal(filtered)].filter(Boolean).join(' · ');
   updateStats();
   persistFilters();
-  renderAlso();
 }
 
-// ─── Search the other library too ──────────────────────────────
-// ponytail: with more than two libraries this searches the first other one.
-const otherSpace = () => Object.keys(SPACES).find(s => s !== state.space);
-let alsoCache = null; // { space, entries }: fetched once per toggle, dropped on a space switch
-
-async function renderAlso() {
-  const section = $('also-section');
-  const { q, both } = state.filters;
-  const other = otherSpace();
-  if (!both || !q) { section.style.display = 'none'; return; }
-  if (!alsoCache || alsoCache.space !== other) {
-    try { alsoCache = { space: other, entries: await api.get('/api/entries', other) }; } catch { section.style.display = 'none'; return; }
-    if (!state.filters.both || otherSpace() !== other) return; // moved on while fetching
-  }
-  const lower = state.filters.q.toLowerCase();
-  const hits = sortEntries(alsoCache.entries.filter(e => matchesQuery(e, lower)));
-  section.style.display = hits.length ? '' : 'none';
-  $('also-heading').textContent = `Also in ${SPACES[other]} (${hits.length})`;
-  renderGrid($('also-grid'), hits, false);
+// "Remove Shoes → 8 results": for an empty list, what dropping each active filter (or the search) would give.
+function renderNoMatchFixes() {
+  const saved = state.filters;
+  const options = filterChips().map(c => ({ text: c.text.replace(/^[a-z]+: /, ''), patch: c.drop() }));
+  if (saved.q) options.push({ text: `the search “${saved.q}”`, patch: { q: '' } });
+  if (saved.favorite) options.push({ text: 'Favorites', patch: { favorite: false } });
+  if (saved.hideBought) options.push({ text: 'Hide bought', patch: { hideBought: false } });
+  const counted = options.map(o => {
+    state.filters = { ...saved, ...o.patch };
+    const n = applyFilters(state.entries).length;
+    state.filters = saved;
+    return { ...o, n };
+  }).filter(o => o.n > 0).sort((a, b) => b.n - a.n).slice(0, 4);
+  $('no-match-fixes').replaceChildren(...counted.map(o => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'chip';
+    btn.textContent = `Remove ${o.text} → ${o.n} ${o.n === 1 ? 'result' : 'results'}`;
+    btn.addEventListener('click', () => {
+      Object.assign(state.filters, o.patch);
+      if ('q' in o.patch) { $('search-input').value = ''; $('search-clear').style.display = 'none'; }
+      renderBrowse();
+    });
+    return btn;
+  }));
 }
 
 // Sidebar counters, derived from what's already loaded.
@@ -602,7 +592,6 @@ export function updateStats() {
   const noun = fashion ? 'item' : 'entr';
   const n = state.entries.length;
   $('stats-line').textContent = [`${n} ${noun}${n === 1 ? (fashion ? '' : 'y') : (fashion ? 's' : 'ies')}`, priceTotal(state.entries)].filter(Boolean).join(' · ');
-  $('nav-fav-count').textContent = state.entries.filter(e => e.favorite).length || '';
   $('nav-boards-count').textContent = state.boards.length || '';
   renderSidebarBoards();
 }
@@ -638,23 +627,32 @@ function syncLayoutButtons() {
     b.setAttribute('aria-pressed', String(on));
   });
   $('card-size').style.display = state.layout === 'list' ? 'none' : '';
-  const dense = document.documentElement.dataset.density === 'compact';
-  $('density-toggle').style.display = state.layout === 'list' ? '' : 'none';
-  $('density-toggle').classList.toggle('active', dense);
-  $('density-toggle').setAttribute('aria-pressed', String(dense));
 }
+
+// Group headings the user folded away this session ("brand:Dr. Martens"); their entries stay in the count.
+const collapsed = new Set();
 
 // `groups` is [[heading | null, entries]] (Browse only); plain callers pass just `entries`.
 function appendEntries(el, entries, groups, make) {
   el.innerHTML = '';
   (groups || [[null, entries]]).forEach(([heading, list]) => {
+    const key = `${activeGroup()}:${heading}`;
+    const folded = heading !== null && collapsed.has(key);
     if (heading !== null) {
       const h = document.createElement('div');
-      h.className = 'group-heading';
-      h.append(heading, Object.assign(document.createElement('span'), { textContent: list.length }));
+      h.className = 'group-heading' + (folded ? ' collapsed' : '');
+      h.tabIndex = 0;
+      h.setAttribute('role', 'button');
+      h.setAttribute('aria-expanded', String(!folded));
+      const total = priceTotal(list); // Fashion only
+      h.append(heading, Object.assign(document.createElement('span'), { textContent: list.length }),
+        ...(total && total !== '$0' ? [Object.assign(document.createElement('span'), { className: 'group-total', textContent: total })] : []));
+      const toggle = () => { if (!collapsed.delete(key)) collapsed.add(key); renderBrowse(); };
+      h.addEventListener('click', toggle);
+      h.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
       el.appendChild(h);
     }
-    list.forEach(entry => el.appendChild(make(entry)));
+    if (!folded) list.forEach(entry => el.appendChild(make(entry)));
   });
 }
 
@@ -683,83 +681,6 @@ function favButton(entry) {
   return btn;
 }
 
-function pinButton(entry) {
-  const btn = iconButton('button', 'card-fav card-pin' + (entry.pinned ? ' is-pinned' : ''), entry.pinned ? 'Unpin' : 'Pin to top');
-  btn.setAttribute('aria-pressed', String(!!entry.pinned));
-  btn.textContent = '📌';
-  btn.addEventListener('click', async e => {
-    e.stopPropagation();
-    await toggleFlag(entry.id, 'pinned');
-  });
-  return btn;
-}
-
-function copyButton(entry) {
-  const btn = iconButton('button', 'card-open', 'Copy URL');
-  btn.innerHTML = COPY_ICON;
-  btn.addEventListener('click', e => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(entry.url).then(() => toastSuccess('Copied URL.'), () => toastError('Could not copy.'));
-  });
-  return btn;
-}
-
-function boardButton(entry) {
-  const btn = iconButton('button', 'card-open', 'Add to board');
-  btn.innerHTML = BOARD_ICON;
-  btn.addEventListener('click', e => {
-    e.stopPropagation();
-    openBoardMenu(entry.id, btn);
-  });
-  return btn;
-}
-
-// Small popup of boards with a tick on the ones the entry is in; each click toggles.
-// The grid is rebuilt once, when the menu closes, so the card under the cursor stays put.
-let quickMenu = null;
-let quickDirty = false;
-
-function closeQuickMenu() {
-  if (!quickMenu) return;
-  quickMenu.remove();
-  quickMenu = null;
-  if (quickDirty) { quickDirty = false; renderBoardFilters(); renderBrowse(); }
-}
-
-function openBoardMenu(id, anchor) {
-  closeQuickMenu();
-  const menu = document.createElement('div');
-  menu.className = 'quick-menu';
-  const fill = () => {
-    const entry = state.entries.find(e => e.id === id);
-    menu.innerHTML = state.boards.length ? '' : '<div class="filter-check-empty">No boards yet.</div>';
-    state.boards.forEach(b => {
-      const on = entry.boards.includes(b.id);
-      const item = document.createElement('button');
-      item.type = 'button';
-      item.className = 'filter-option' + (on ? ' selected' : '');
-      item.textContent = `${on ? '✓ ' : ''}${boardLabel(b)}`;
-      item.addEventListener('click', async e => {
-        e.stopPropagation();
-        try {
-          await api.post('/api/entries/bulk', { ids: [id], action: on ? 'removeFromBoard' : 'addToBoard', boards: b.id });
-        } catch (err) { toastError(err.message); return; }
-        entry.boards = on ? entry.boards.filter(x => x !== b.id) : [...entry.boards, b.id];
-        quickDirty = true;
-        fill();
-      });
-      menu.appendChild(item);
-    });
-  };
-  fill();
-  const r = anchor.getBoundingClientRect();
-  menu.style.top = `${r.bottom + 4}px`;
-  menu.style.left = `${Math.min(r.left, window.innerWidth - 190)}px`;
-  document.body.appendChild(menu);
-  quickMenu = menu;
-  window.addEventListener('scroll', closeQuickMenu, { once: true, passive: true });
-}
-
 function openLink(entry, className, label) {
   const href = safeHref(entry.url);
   if (!href) return null;
@@ -780,7 +701,7 @@ function onItemClick(e, el, entry, clickOpensDetail) {
     state.selectAnchorId = entry.id;
     return;
   }
-  if (clickOpensDetail) withTransition(() => openDetail(entry.id));
+  if (clickOpensDetail) openDetail(entry.id);
 }
 
 let draggedEntryId = null; // entry being dragged inside a board
@@ -791,7 +712,8 @@ function createCard(entry, clickOpensDetail, boardId = null) {
   card.dataset.id = entry.id;
   card.tabIndex = 0;
   if (state.selectedIds.has(entry.id)) card.classList.add('selected');
-  if (!entry.screenshot) card.classList.add('no-shot');
+  if (!coverOf(entry)) card.classList.add('no-shot');
+  if (state.sinceOpen && Date.parse(entry.date_added) > state.sinceOpen) card.classList.add('is-new');
   if (entry.visited_at) card.classList.add('visited');
   card.title = entry.visited_at ? `Site last opened ${new Date(entry.visited_at).toLocaleDateString()}` : '';
 
@@ -800,14 +722,15 @@ function createCard(entry, clickOpensDetail, boardId = null) {
   thumb.className = 'thumb-wrap' + (isMobile ? ' mobile' : '');
   if (entry.palette[0]) thumb.style.backgroundColor = entry.palette[0]; // shows while the thumbnail loads
 
-  if (entry.screenshot) {
-    thumb.appendChild(thumbImg(entry.screenshot, titleOf(entry)));
+  if (coverOf(entry)) {
+    thumb.appendChild(thumbImg(coverOf(entry), titleOf(entry)));
   } else {
     thumb.innerHTML = `<div class="thumb-placeholder">${PLACEHOLDER_SVG}<span>No screenshot</span></div>`;
   }
 
-  // A page image fetched from the entry's URL stands in for a screenshot the user took.
-  if (entry.screenshot && (entry.remote_shots || []).includes(entry.screenshot)) {
+  // A page image fetched from the entry's URL stands in for a screenshot the user took
+  // (in Fashion the page's product photo is the right image, so no badge there).
+  if (state.space !== 'fashion' && coverOf(entry) && (entry.remote_shots || []).includes(coverOf(entry))) {
     const badge = document.createElement('span');
     badge.className = 'shot-badge';
     badge.textContent = 'Page image';
@@ -815,7 +738,7 @@ function createCard(entry, clickOpensDetail, boardId = null) {
   }
 
   // Status badges that stay visible without hovering
-  const flags = [entry.pinned && '📌 Pinned', entry.bought && 'Bought'].filter(Boolean);
+  const flags = [entry.bought && 'Bought'].filter(Boolean);
   if (flags.length) {
     const flagEl = document.createElement('span');
     flagEl.className = 'card-flags';
@@ -823,12 +746,12 @@ function createCard(entry, clickOpensDetail, boardId = null) {
     thumb.appendChild(flagEl);
   }
 
-  // Overlay: open, copy URL, add to board, pin, fav (+ remove-from-board)
+  // Overlay: open, fav (+ remove-from-board); copy and boards live in the detail view
   const overlay = document.createElement('div');
   overlay.className = 'card-overlay';
   const open = openLink(entry, 'card-open', 'Open site');
   if (open) overlay.appendChild(open);
-  overlay.append(copyButton(entry), boardButton(entry), pinButton(entry), favButton(entry));
+  overlay.appendChild(favButton(entry));
 
   if (boardId) {
     const removeBtn = iconButton('button', 'card-remove-board', 'Remove from board');
@@ -876,6 +799,7 @@ function createCard(entry, clickOpensDetail, boardId = null) {
     const meta = document.createElement('div');
     meta.className = 'card-meta';
     meta.textContent = brandPrice(entry);
+    if (priceDrop(entry)) meta.append(' ', Object.assign(document.createElement('span'), { className: 'price-drop', textContent: priceDrop(entry) }));
     body.appendChild(meta);
   }
 
@@ -920,6 +844,7 @@ function createRow(entry, clickOpensDetail) {
   row.dataset.id = entry.id;
   if (state.selectedIds.has(entry.id)) row.classList.add('selected');
   if (entry.visited_at) row.classList.add('visited');
+  if (state.sinceOpen && Date.parse(entry.date_added) > state.sinceOpen) row.classList.add('is-new');
 
   const check = document.createElement('div');
   check.className = 'row-check';
@@ -928,8 +853,8 @@ function createRow(entry, clickOpensDetail) {
   const thumb = document.createElement('div');
   thumb.className = 'row-thumb';
   if (entry.palette[0]) thumb.style.backgroundColor = entry.palette[0];
-  if (entry.screenshot) {
-    thumb.appendChild(thumbImg(entry.screenshot));
+  if (coverOf(entry)) {
+    thumb.appendChild(thumbImg(coverOf(entry)));
   } else {
     thumb.classList.add('empty');
     thumb.innerHTML = PLACEHOLDER_SVG;
@@ -943,7 +868,7 @@ function createRow(entry, clickOpensDetail) {
   title.append(titleOf(entry));
   const url = document.createElement('div');
   url.className = 'row-url';
-  url.textContent = [entry.pinned && '📌', entry.bought && 'Bought', entry.visited_at && '✓ visited', brandPrice(entry), cleanUrl(entry.url)].filter(Boolean).join(' · ');
+  url.textContent = [entry.bought && 'Bought', entry.visited_at && '✓ visited', brandPrice(entry), priceDrop(entry), cleanUrl(entry.url)].filter(Boolean).join(' · ');
   url.title = entry.url;
   main.append(title, url);
 
@@ -962,7 +887,7 @@ function createRow(entry, clickOpensDetail) {
 
   const actions = document.createElement('div');
   actions.className = 'row-actions';
-  actions.append(pinButton(entry), favButton(entry));
+  actions.append(favButton(entry));
   const open = openLink(entry, 'row-open', 'Open source');
   if (open) actions.appendChild(open);
 
@@ -994,23 +919,33 @@ const BULK_VALUES = {
   tag: () => state.tags.map(t => ({ value: t, label: t })),
   untag: () => state.tags.map(t => ({ value: t, label: t })),
   setType: () => [{ value: NO_TYPE, label: '— None —' }, ...state.types.map(t => ({ value: t, label: t }))],
+  setColor: () => [{ value: NO_TYPE, label: '— None —' }, ...COLOR_NAMES.map(c => ({ value: c, label: c }))],
+  setFoundVia: () => [{ value: NO_TYPE, label: '— None —' }, ...state.foundVia.map(v => ({ value: v, label: v }))],
   addToBoard: () => state.boards.map(b => ({ value: b.id, label: boardLabel(b) })),
   removeFromBoard: () => state.boards.map(b => ({ value: b.id, label: boardLabel(b) }))
 };
 
 function fillBulkValue() {
   const sel = $('bulk-value');
-  const make = BULK_VALUES[$('bulk-action').value];
+  const action = $('bulk-action').value;
+  const make = BULK_VALUES[action];
   sel.style.display = make ? '' : 'none';
   sel.innerHTML = '';
+  // Brand is free text: a field with the brands you already use as suggestions.
+  $('bulk-text').style.display = action === 'setBrand' ? '' : 'none';
+  $('bulk-text').value = '';
+  $('bulk-brands').replaceChildren(...[...new Set(state.entries.map(e => e.brand).filter(Boolean))].sort(byName).map(b => new Option(b)));
   if (!make) return;
   sel.add(new Option('Choose…', ''));
-  make().sort((a, b) => byName(a.label, b.label)).forEach(o => sel.add(new Option(o.label, o.value)));
+  make().sort((a, b) => (a.value === NO_TYPE ? -1 : b.value === NO_TYPE ? 1 : byName(a.label, b.label))).forEach(o => sel.add(new Option(o.label, o.value)));
 }
 
 // Builds the request body for the chosen action, or null when it isn't complete yet.
 function bulkPayload(action, value) {
   switch (action) {
+    case 'setBrand': return $('bulk-text').value.trim() ? { action, brand: $('bulk-text').value.trim() } : null;
+    case 'setColor': return value ? { action, color: value === NO_TYPE ? '' : value } : null;
+    case 'setFoundVia': return value ? { action, foundVia: value === NO_TYPE ? '' : value } : null;
     case 'tag': case 'untag': return value ? { action, tag: value } : null;
     case 'setType': return value ? { action, type: value === NO_TYPE ? '' : value } : null;
     case 'addToBoard': case 'removeFromBoard': return value ? { action, boards: value } : null;
@@ -1021,11 +956,11 @@ function bulkPayload(action, value) {
 }
 
 // The one entry field each non-delete bulk action changes (the field Undo restores).
-const UNDO_FIELD = { tag: 'style_tags', untag: 'style_tags', setType: 'type', addToBoard: 'boards', removeFromBoard: 'boards', favorite: 'favorite' };
+const UNDO_FIELD = { tag: 'style_tags', untag: 'style_tags', setType: 'type', setBrand: 'brand', setColor: 'color', setFoundVia: 'found_via', addToBoard: 'boards', removeFromBoard: 'boards', favorite: 'favorite' };
 
 // The server may have registered new tags/types, so reload everything it owns.
 async function reloadEntries() {
-  [state.entries, state.tags, state.types] = await Promise.all([api.get('/api/entries'), api.get('/api/tags'), api.get('/api/types')]);
+  [state.entries, state.tags, state.types, state.foundVia] = await Promise.all([api.get('/api/entries'), api.get('/api/tags'), api.get('/api/types'), api.get('/api/found-via')]);
   refreshViews();
   renderBoardFilters();
 }
@@ -1037,6 +972,7 @@ export function setupBulk() {
 
   $('bulk-apply').addEventListener('click', async () => {
     if (state.selectedIds.size === 0) { toastError('Select some entries first.'); return; }
+    if ($('bulk-action').value === 'autofill') { await bulkAutofill([...state.selectedIds]); return; }
     const payload = bulkPayload($('bulk-action').value, $('bulk-value').value);
     if (!payload) { toastError('Choose an action and a value.'); return; }
     const ids = [...state.selectedIds];
@@ -1084,51 +1020,33 @@ export function setupBulk() {
   });
 }
 
-// Removes entries from view immediately and shows an "Undo" toast; the actual
-// server delete (which also removes the screenshot files) only fires once the
-// toast's 5s window elapses without Undo being clicked.
-export function deleteEntriesWithUndo(ids) {
-  const removed = ids
-    .map(id => ({ id, idx: state.entries.findIndex(e => e.id === id) }))
-    .filter(r => r.idx !== -1)
-    .map(r => ({ ...r, entry: state.entries[r.idx] }));
-  if (removed.length === 0) return;
-
-  [...removed].sort((a, b) => b.idx - a.idx).forEach(r => state.entries.splice(r.idx, 1));
+// Deleting moves the entries to the trash at once; Undo takes them back out. Nothing waits
+// on a timer, so closing the tab right after a delete cannot leave the entries behind.
+export async function deleteEntriesWithUndo(ids) {
+  const space = state.space; // the user may switch library before pressing Undo
+  try {
+    await api.post('/api/entries/bulk', { ids, action: 'delete' });
+  } catch (err) {
+    toastError(`Failed to delete: ${err.message}`);
+    return;
+  }
+  state.entries = state.entries.filter(e => !ids.includes(e.id));
   refreshViews();
 
-  // The user may switch space within the 5 seconds, so the calls below name theirs.
-  const space = state.space;
-  let undone = false;
-  const timer = setTimeout(async () => {
-    if (undone) return;
-    try {
-      await api.post('/api/entries/bulk', { ids, action: 'delete' }, space);
-    } catch {
-      toastError('Failed to delete. Reloading entries.');
-      if (state.space === space) {
-        state.entries = await api.get('/api/entries');
-        refreshViews();
-      }
-    }
-  }, 5000);
-
-  showToast(removed.length === 1 ? 'Entry deleted.' : `${removed.length} entries deleted.`, {
+  showToast(ids.length === 1 ? 'Entry deleted.' : `${ids.length} entries deleted.`, {
     duration: 5000,
     actionLabel: 'Undo',
-    onAction: () => {
-      undone = true;
-      clearTimeout(timer);
-      if (state.space !== space) return; // still saved server-side; shows up when that space is reopened
-      [...removed].sort((a, b) => a.idx - b.idx).forEach(r => state.entries.splice(r.idx, 0, r.entry));
-      refreshViews();
+    onAction: async () => {
+      const results = await Promise.allSettled(ids.map(id => api.post(`/api/trash/${id}/restore`, {}, space)));
+      const failed = results.filter(r => r.status === 'rejected').length;
+      if (failed) toastError(`Restored ${ids.length - failed} of ${ids.length}; ${failed} could not be restored (they are in the trash).`);
+      if (state.space === space) await reloadEntries();
     }
   });
 }
 
 function refreshViews() {
   renderBrowse();
-  if (state.view === 'favorites') renderFavorites();
 }
 
 function toggleSelect(id, card) {
@@ -1162,7 +1080,7 @@ function updateBulkCount() {
   $('bulk-count').textContent = `${state.selectedIds.size} selected`;
 }
 
-// ═══════════════════════════════════════════ FAVORITES ══
+// ═══════════════════════════════════════════ FLAGS ══
 export async function toggleFlag(id, flag) {
   const idx = state.entries.findIndex(e => e.id === id);
   if (idx === -1) return;
@@ -1186,9 +1104,83 @@ export async function markVisited(ids) {
   } catch { /* the badge is a convenience; the link already opened */ }
 }
 
-export function renderFavorites() {
-  const favs = state.entries.filter(e => e.favorite).sort((a, b) => new Date(b.date_added) - new Date(a.date_added));
-  if (state.view === 'favorites') state.navIds = favs.map(e => e.id);
-  renderGrid($('fav-grid'), favs);
-  $('fav-empty').style.display = favs.length === 0 ? '' : 'none';
+// ═══════════════════════════════════════════ RE-RUN AUTOFILL / REFRESH PRICES ══
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const unfurl = url => api.get(`/api/unfurl?url=${encodeURIComponent(url)}`);
+
+// The blank fields of `e` that its page can fill. Never a field that already has a value.
+function blankFills(e, info) {
+  const guess = { title: cleanTitle(info.title || '', info.siteName, e.url) };
+  if (state.space === 'fashion') {
+    Object.assign(guess, guessFashionFields(info, e.url, { entries: state.entries.filter(x => x.id !== e.id), types: state.types, colors: COLOR_NAMES }));
+  } else if (info.themeColor) {
+    guess.color = colorName(info.themeColor);
+  }
+  return Object.fromEntries(['title', 'brand', 'price', 'type', 'color'].filter(f => guess[f] && !e[f]).map(f => [f, guess[f]]));
+}
+
+// "Re-run autofill (blanks only)": reads each selected entry's page, then lists what it would fill for review.
+async function bulkAutofill(ids) {
+  const btn = $('bulk-apply');
+  const label = btn.textContent;
+  const space = state.space;
+  const targets = ids.map(id => state.entries.find(e => e.id === id)).filter(Boolean);
+  const changes = [];
+  let unreadable = 0;
+  btn.disabled = true;
+  for (const [i, e] of targets.entries()) {
+    btn.textContent = `Reading ${i + 1} of ${targets.length}…`;
+    try {
+      const fills = blankFills(e, await unfurl(e.url));
+      if (Object.keys(fills).length) changes.push({ entry: e, fills });
+    } catch { unreadable++; }
+  }
+  btn.disabled = false;
+  btn.textContent = label;
+  const note = unreadable ? ` ${unreadable} page${unreadable === 1 ? '' : 's'} could not be read.` : '';
+  if (!changes.length) return showToast(`Nothing to fill in.${note}`);
+  confirm_(`Fill blank fields on ${changes.length} of ${targets.length} entries?${note}`, async () => {
+    const results = await Promise.allSettled(changes.map(c => api.put(`/api/entries/${c.entry.id}`, c.fills, space)));
+    const failed = results.filter(r => r.status === 'rejected').length;
+    if (state.space === space) { await reloadEntries(); state.selectedIds.clear(); updateBulkCount(); }
+    (failed ? toastError : toastSuccess)(failed ? `Filled ${changes.length - failed}; ${failed} failed.` : `Filled ${changes.length} ${changes.length === 1 ? 'entry' : 'entries'}.`);
+  }, 'Fill in', changes.map(c => `${titleOf(c.entry)}: ${Object.entries(c.fills).map(([k, v]) => `${k} → ${v}`).join(', ')}`));
+}
+
+// Re-reads the price of every item in the current list, one at a time. Still a button you press (nothing runs in the
+// background); it just saves opening fifteen entries one by one. A second press stops it.
+let refreshing = false;
+
+async function refreshPrices() {
+  if (refreshing) { refreshing = false; return; }
+  const targets = sortEntries(applyFilters(state.entries)).filter(e => e.url);
+  if (!targets.length) return showToast('Nothing in the list to refresh.');
+  const n = targets.length;
+  confirm_(`Re-read the price of ${n} ${n === 1 ? 'item' : 'items'}, one at a time (about ${n} seconds)? Changed prices are saved, and the old one is kept as "was".`, async () => {
+    const btn = $('refresh-prices-btn');
+    const label = btn.textContent;
+    const space = state.space;
+    let changed = 0, fell = 0, failed = 0;
+    refreshing = true;
+    for (const [i, e] of targets.entries()) {
+      if (!refreshing || state.space !== space) break;
+      btn.textContent = `Stop (${i + 1}/${n})`;
+      try {
+        const price = String(guessFashionFields(await unfurl(e.url), e.url, { entries: [], types: [], colors: [] }).price || '');
+        if (price && priceOf({ price }) !== priceOf(e)) {
+          const updated = await api.put(`/api/entries/${e.id}`, { price, price_was: e.price }, space);
+          const idx = state.entries.findIndex(x => x.id === e.id);
+          if (idx !== -1) state.entries[idx] = updated;
+          changed++;
+          if (priceDrop(updated)) fell++;
+          renderBrowse();
+        }
+      } catch { failed++; }
+      await sleep(800);
+    }
+    refreshing = false;
+    btn.textContent = label;
+    renderBrowse();
+    showToast(`${changed} ${changed === 1 ? 'price' : 'prices'} changed${fell ? `, ${fell} fell` : ''}${failed ? `; ${failed} could not be read` : ''}.`);
+  }, 'Refresh');
 }

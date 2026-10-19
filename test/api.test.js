@@ -869,3 +869,18 @@ test('bulk setBrand, setColor and setFoundVia, and brand rename/merge', async ()
   assert.equal((await call('PUT', '/api/brands/Bronson Mfg', { newName: '  ' }, 'fashion')).status, 400);
   await bulk({ action: 'delete' });
 });
+
+test('README documents every API route', () => {
+  const readme = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
+  const paths = new Set();
+  const walk = stack => stack.forEach(layer => {
+    if (layer.route) paths.add(layer.route.path);
+    else if (layer.handle && layer.handle.stack) walk(layer.handle.stack);
+  });
+  walk(app.router.stack);
+  // the path must end there, so `/api/entries/:id` is not satisfied by `/api/entries/:id/screenshot`
+  const documented = p => new RegExp(`${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w:/-])`).test(readme);
+  const missing = [...paths].filter(p => p.startsWith('/api') && !documented(p));
+  assert.deepEqual(missing, [], 'routes missing from the README API table');
+  assert.ok(paths.size > 30, 'the router walk found the routes');
+});

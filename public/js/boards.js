@@ -1,7 +1,7 @@
 // Boards view: the board grid, a single board's entries, the "add entries"
 // picker, and drag-to-another-board.
 
-import { state, PLACEHOLDER_SVG, escHtml, titleOf, safeHref, thumbImg, priceTotal, boardLabel } from './state.js';
+import { state, PLACEHOLDER_SVG, escHtml, titleOf, safeHref, thumbImg, priceTotal, boardLabel, coverOf } from './state.js';
 import { api } from './api.js';
 import { orderEntries } from './lib.js';
 import { confirm_, prompt_, toastSuccess, toastError, openModalOverlay, closeModalOverlay } from './modals.js';
@@ -139,8 +139,8 @@ function boardThumbCollage(entries) {
     const cell = document.createElement('div');
     cell.className = 'board-thumb-cell';
     const entry = entries[i];
-    if (entry && entry.screenshot) {
-      cell.appendChild(thumbImg(entry.screenshot));
+    if (entry && coverOf(entry)) {
+      cell.appendChild(thumbImg(coverOf(entry)));
     } else {
       cell.classList.add('empty');
       cell.innerHTML = PLACEHOLDER_SVG;
@@ -307,8 +307,8 @@ function openBoardPicker(board) {
 
       const thumb = document.createElement('div');
       thumb.className = 'picker-thumb';
-      if (entry.screenshot) {
-        thumb.appendChild(thumbImg(entry.screenshot));
+      if (coverOf(entry)) {
+        thumb.appendChild(thumbImg(coverOf(entry)));
       } else {
         thumb.classList.add('empty');
         thumb.innerHTML = PLACEHOLDER_SVG;

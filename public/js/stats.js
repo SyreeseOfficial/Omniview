@@ -1,7 +1,7 @@
 // Stats view: everything is derived from the entries already in memory.
 
-import { state } from './state.js';
-import { libraryStats } from './lib.js';
+import { state, hasFoundVia } from './state.js';
+import { libraryStats, fashionStats, money } from './lib.js';
 
 const $ = id => document.getElementById(id);
 
@@ -13,10 +13,11 @@ function el(tag, className, text) {
 }
 
 // Ranked horizontal bars; one series, so one color and no legend (the heading names it).
+// A list with no rows gets no card at all (Fashion has no tags, for one).
 function barList(title, rows) {
+  if (!rows.length) return null;
   const card = el('div', 'settings-section stats-card');
   card.append(el('h2', 'settings-heading', title));
-  if (!rows.length) { card.append(el('p', 'settings-desc', 'Nothing yet.')); return card; }
   const max = rows[0][1];
   for (const [name, n] of rows) {
     const row = el('div', 'stats-row');
@@ -48,7 +49,10 @@ export function renderStats() {
     chart.append(col);
   }
   months.append(chart);
-  root.append(months, barList('Top tags', s.tags), barList('Found via', s.via), barList(state.space === 'fashion' ? 'Item types' : 'Entry types', s.types));
+  root.append(months);
+  if (state.space === 'fashion') root.append(wishlistCard(fashionStats(state.entries)));
+  const brands = state.space === 'fashion' ? barList('Items per brand', fashionStats(state.entries).brands) : null;
+  root.append(...[brands, barList('Top tags', s.tags), hasFoundVia() ? barList('Found via', s.via) : null, barList(state.space === 'fashion' ? 'Item types' : 'Entry types', s.types)].filter(Boolean));
 
   if (state.space === 'ui') {
     const card = el('div', 'settings-section stats-card stats-wide');
@@ -64,4 +68,20 @@ export function renderStats() {
     card.append(strip);
     root.append(card);
   }
+}
+
+// Money in the wishlist: totals of what you still want and of what you bought, and the spread of the prices.
+function wishlistCard({ wishlist, bought, average, min, max }) {
+  const card = el('div', 'settings-section stats-card');
+  card.append(el('h2', 'settings-heading', 'Wishlist'));
+  const total = ({ count, total, other }) => `${count} ${count === 1 ? 'item' : 'items'} · ${money(total)}${other ? ` + ${other} in another currency` : ''}`;
+  const rows = [
+    ['Still wanted', total(wishlist)],
+    ['Bought', total(bought)],
+    ...(average === null ? [] : [['Average price', money(average)], ['Cheapest', money(min)], ['Priciest', money(max)]])
+  ];
+  const dl = el('dl', 'storage-stats');
+  for (const [k, v] of rows) dl.append(el('dt', '', k), el('dd', '', v));
+  card.append(dl);
+  return card;
 }

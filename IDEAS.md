@@ -56,14 +56,7 @@ All items from this section are under **Completed** or **Skipped** at the bottom
 
 ## 12. Code, tests & dev experience
 
-- [ ] **[M]** `// @ts-check` + JSDoc `@typedef Entry` and a `tsc --noEmit` script: type safety without a build step, and catches the `entry.palette` / `style_tags` shape drift that `normalizeEntry` guards by hand.
-- [ ] **[M]** Serve shared constants from the server: `MAX_SCREENSHOTS` is duplicated in `entry.js:11` with a "keep in step" comment. A tiny `/api/config` (limits, space defaults) removes the drift risk.
-- [ ] **[L]** `engines: { node: ">=20" }` in `package.json` (code uses `Object.hasOwn`, `AbortSignal.timeout`, `??=`); fail early with a clear message on old Node.
-- [ ] **[L]** ESLint or Biome config and `npm run lint` in CI (unused variables, accidental globals, `==`).
-- [ ] **[L]** Playwright smoke test (add → tag → favorite → delete → undo) as an optional script, not in default `npm test`.
-- [ ] **[L]** `npm run seed`: generate 30 sample entries with generated screenshots for demos, README images and manual testing without touching real data.
-- [ ] **[L]** Dependabot (npm + actions) config; `sharp` and `express` are the two that matter.
-- [ ] **[L]** `.editorconfig` and a single formatting convention (the code already reads consistently; lock it in).
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ## 13. Docs & repo
 
@@ -113,62 +106,23 @@ Found by reading the code and counting what the two real libraries actually use 
 
 ### Bugs and drift (checked against the code)
 
-- [ ] **[M]** `priceTotal` adds every price as dollars, so `EUR 120` and `$100` total `$220`. Sum only bare/USD prices and append "+ 1 in another currency", or leave non-USD out of the total.
-- [ ] **[L]** `priceOf` takes the first number in the text: `2 for $100` sorts as 2 and `from $90 to $120` as 90. Prefer the number next to a currency symbol, fall back to the first.
-- [ ] **[L]** `persistFilters` saves the search text too, so reopening the app can show "No entries match your filters" because of a query from last week. Persist the filters, start with an empty search box.
-- [ ] **[M]** Validate `date_added` in `normalizeEntry`/`libraryProblems`. A hand-edited bad date gives `Invalid Date` in the sort, the date filter and Stats (all call `new Date()` on it unguarded).
-- [ ] **[M]** `libraryProblems` checks board ids but not screenshot files. Entries pointing at files that are not in `uploads/` (the usual result of restoring an old JSON backup) only show up as grey placeholders. Count them at startup and show "3 broken images" in Settings → Storage.
-- [ ] **[M]** A corrupt `library.json` is moved aside and Omniview starts **empty**. Fall back to the newest file in `db/backups/` instead and say so in a banner ("Restored from backup 2026-10-17: library.json was unreadable").
-- [ ] **[L]** `purgeTrash` runs only at startup and when Settings → Trash is opened, so a server left running for weeks never purges. Run it from the daily `backupDaily` path.
-- [ ] **[L]** `docs/EXPORT_FORMAT.md` does not list `pinned`, `bought`, `visited_at` or `price_was`, all of which are in every exported entry. Document them.
-- [ ] **[M]** Add a test that fails when an entry field is missing from `docs/EXPORT_FORMAT.md`: create an entry, export, compare keys with the doc's bold field names. It would have caught the line above.
-- [ ] **[L]** README API table lacks `/api/trash*`, `/api/visit`, `/api/storage`, `/api/optimize`, `/api/health`, `/api/spaces` and the dry-run `GET /api/cleanup`. A test that compares `app.router` routes with the table keeps it honest.
-- [ ] **[L]** README project tree lists 9 modules; `autofill.js`, `lib.js` and `stats.js` are missing, and `test/` is "API tests" though it has four files.
-- [ ] **[L]** `package.json` still describes Omniview as a "Personal design reference library" (it holds a wishlist too).
-- [ ] **[L]** Three fashion entries are priced 425 on the same shop: probably colourways saved as separate entries. `findDuplicate` can't see it (different URLs). Warn "Looks like a colourway of <entry>" when shop, title stem and price match.
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ### Capture and autofill
 
-- [ ] **[M]** Read `<link rel="canonical">`/`og:url` in `pageInfo` and offer "Use cleaned link". Better saved URLs, and duplicate detection beyond the Shopify rule.
-- [ ] **[M]** Strip `utm_*`, `fbclid`, `gclid` from the URL **when saving**, not only when comparing (`TRACKING_PARAM` only feeds `normalizeUrl`). Saved links currently keep the tracking junk.
-- [ ] **[M]** In the image picker, collapse near-identical candidates (same path, different `?width=` or `_300x` suffix), prefer the largest, and skip anything under ~200px (logos, sprites) when choosing the default cover.
-- [ ] **[M]** After autofill, say what happened in one line: "Filled name, brand, price, type. Skipped colour (2 matches)". The guesses already know which they skipped.
-- [ ] **[M]** Bulk action "Re-run autofill (blanks only)" for selected entries, with a diff before applying. Covers old entries from before autofill improved and entries saved offline.
-- [ ] **[L]** Slow unfurl: show "Still trying…" at 3 s with a Cancel (`AbortController`) instead of a silent 8 s wait.
-- [ ] **[L]** Dropping a link (from the address bar or a page) anywhere on the window starts a new entry with autofill. Dropped files already work; `text/uri-list` does not.
-- [ ] **[L]** Extend the "strip ` | Brand - Shop` title tails" idea (parked for Fashion) to the UI space too: `<title>` often ends in the site name.
-- [ ] **[L]** Autofill report per shop: remember which fields came back empty per host (like `omniview-corrections`) and show "bronsonshop.com: colour missing 4/15" in Settings. Two shops are 23 of 30 fashion entries, so one shop-specific rule beats more generic heuristics.
-- [ ] **[L]** Rate-limit page fetches to one per second per host. Pasting many links from one shop (the batch-add flow) is exactly what gets an IP blocked.
-- [ ] **[L]** Cache `/api/unfurl` answers for ~10 minutes per URL; re-pasting after an edit or pressing Refresh price should not refetch the page.
-- [ ] **[L]** The scraper's User-Agent says `Chrome/130.0.0.0`, which ages into a bot signal. Build it from one constant that is easy to bump (or drop the version).
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ### Browse, search and the wishlist
 
-- [ ] **[L]** Sort "Recently edited" now that `updated_at` exists (FINDINGS asked for it only after that field landed).
-- [ ] **[M]** Filter and Group by **shop** (hostname). 23 of 30 fashion entries come from two hosts; "everything from Barbour" is the natural question and brand is only a guess at it.
-- [ ] **[L]** Sort by brand A to Z in Fashion.
-- [ ] **[M]** Fashion Stats: wishlist total, bought total, average price, price spread, entries per brand. Today the Stats page draws the same cards as UI, and for Fashion "Found via" and "Top tags" say "Nothing yet".
-- [ ] **[L]** Hide Stats cards that are empty instead of rendering "Nothing yet." (Fashion: tags 0, found via 0).
-- [ ] **[M]** Bulk set **brand**, **colour** and **found via**. Bulk can only tag, untag, set type, board, favourite; a wrong brand guess repeats across a whole shop.
-- [ ] **[M]** Brand rename/merge. Brand is free text with autofill suggestions, so `Bronson Mfg.` / `Bronson MFG` variants can still appear; Tags, Types and Found via have merge UI, Brand has none. Inline in the brand filter dropdown is enough.
-- [ ] **[M]** Empty result: say which filter is to blame and what dropping it gives ("Remove Shoes → 8 results"). The chips and facet counts already have the numbers.
-- [ ] **[L]** "New" dot on entries added since you last opened the app (store one timestamp in `localStorage`).
-- [ ] **[L]** Group headings: collapsible, with a subtotal in Fashion ("Dr. Martens · 2 · $270").
-- [ ] **[M]** After Refresh price, mark the card "▼ $20" when the price fell and add a bulk "Refresh prices of the visible list" that runs one at a time with a delay. Still manual (the "no background tracking" decision stands), but you stop opening 15 entries one by one.
-- [ ] **[L]** Fuzzy search fallback: if an exact search finds nothing, retry with edit distance 1 on title and brand (`barbor` finds Barbour).
-- [ ] **[L]** Restore scroll position per library when switching with `G` (switching currently re-renders from the top).
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ### Detail view and boards
 
-- [ ] **[L]** Show image dimensions and file size under the screenshot ("1440×900 · 312 KB"). Makes the Optimise decision visible per entry.
-- [ ] **[L]** Autosave an unsaved detail note to `localStorage` the way the Add form saves drafts; the dirty guard only warns.
-- [ ] **[L]** Set `document.title` per view and open entry ("Omniview · Boards", "Wool overcoat · Omniview") so tab switchers and browser history are readable.
-- [ ] **[L]** Triage mode for untagged entries: one large screenshot at a time, tag chips on number keys, Space for next. Pairs with the parked "Needs attention" filter.
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ### Data safety and privacy
 
-- [ ] **[M]** Persist an image hash on the entry when a screenshot is attached. `findDuplicateImage` reads and SHA-256s every screenshot in both libraries on the first upload after each restart (39 MB now, grows with the library).
-- [ ] **[L]** Hide the heartbeat's silence: `setInterval(... api.get('/api/health').catch(() => {}))` swallows connection errors, so a stopped server shows nothing until the next click. If the poll stays, show "Omniview stopped. Retry" when it fails (otherwise remove it, section 19).
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ### Tests and tooling
 
@@ -185,11 +139,7 @@ Found by reading the code and counting what the two real libraries actually use 
 
 ### FINDINGS.md housekeeping (these are already done in the code)
 
-- [ ] **[L]** Close "The first paint uses the wrong theme": the inline script in `<head>` does it.
-- [ ] **[L]** Close "Entry cards are not keyboard-reachable" down to "arrow keys inside the grid" (above): cards have `tabIndex=0` and Enter.
-- [ ] **[L]** Close the `updated_at` half of "The entry has no `updated_at` or `last_viewed`"; only `last_viewed` is still open, and `visited_at` partly covers it.
-- [ ] **[L]** Re-rank "Real screenshots via headless Chromium": 18 of 30 fashion entries use the page's own `og:image`, which for a product photo is the right image. The capture upgrade now only matters for the UI library.
-- [ ] **[L]** Still open and still true, in one place: `isMobile = entry.type === 'Mobile App'` at `browse.js` (the UI types are Website and Start Page), Google Fonts still loaded from `index.html`, no CSP/`nosniff` headers.
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ---
 
@@ -199,55 +149,32 @@ Less is more. Each line says what goes, what it costs to keep, and the evidence.
 
 ### Delete first (no loss)
 
-- [ ] **[M]** `<link rel="modulepreload">` ×11 in `index.html`. Loopback latency is under 5 ms and the list is already stale (`stats.js` is missing).
-- [ ] **[L]** `db/library.json.bak` and the `db/*.bak` line in `.gitignore`: nothing writes `.bak` files any more.
-- [ ] **[M]** The derived `screenshot` field ("kept for older clients and exports"). There are no older clients. It is mirrored from `screenshots[0]` in `normalizeEntry` and used about 18 times; read `screenshots[0]` instead, drop it from the file and the export.
-- [ ] **[L]** The 14 copies of the caret SVG in `index.html` while `CARET_SVG` exists in `state.js`; one CSS `::after` mask replaces all of them.
-- [ ] **[L]** Hide the "Page image" badge in Fashion. 18 of 30 cards have it, and there the page's product photo is the correct image, so the badge is noise.
-- [ ] **[L]** The `GET /api/entries` server-side sort. The client sorts everything again; the server already stores entries in order.
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ### Delete once usage confirms
 
-- [ ] **[M]** `GET /api/health` and the 10-second poll in `main.js`. Every API answer already carries `X-Save-Error`; check it in `api.js` on each response and when the tab regains focus. One endpoint, one timer and one request per tab every 10 s gone. (Or keep it and make it show "server stopped", section 18.)
-- [ ] **[M]** Make delete-with-undo use the Trash. `deleteEntriesWithUndo` hides the entries, waits 5 s, and only then sends the delete; closing the tab inside those 5 s silently keeps entries you "deleted", and the failure path reloads the whole list. With Trash in place: delete at once (soft), and Undo calls `POST /api/trash/:id/restore`. Removes the timer, the `undone` flag and the cross-space bookkeeping.
-- [ ] **[M]** Factory reset (Danger Zone, typed library name, `/api/reset`, its confirm body, its tests). Trash plus seven backups cover mistakes; a real reset is deleting `db/<library>.json`. Also one less destructive endpoint on localhost.
-- [ ] **[M]** "Both libraries" toggle (`filter-both`, `renderAlso`, `alsoCache`, `.also-section`). The two libraries share no vocabulary (websites vs jackets), and the design record says "never shown together".
-- [ ] **[M]** Pin (card button, detail button, sort rule, `pinned` field, export). Favourite already means "important" and 0 of 60 entries are pinned. Two flags for one idea.
-- [ ] **[L]** "Recent" chip, `omniview-recent` storage and `recordRecent`. Newest sort covers 30 entries, and "recent" is a third meaning of "seen" next to `visited_at` and `updated_at`.
 - [ ] **[L]** `/api/optimize` and its button after one more run: the library is already optimised and new uploads are size-capped by the 50 MB limit only. Keep it as `scripts/optimize.js`, out of the server and Settings.
 - [ ] **[L]** "Check unused files" button: do the sweep at startup (log the count) and remove the button, the Storage section's three paragraphs and the extra confirm dialog. Orphans only come from interrupted uploads.
-- [ ] **[L]** Contrast badge (`contrastRatio`, `contrastLevel`, the AA/AAA label and their tests). Interesting, but nothing in the workflow acts on it.
 - [ ] **[L]** "More like this" while the library is under ~50 entries: hide the section; with 30 entries it mostly returns whatever shares a type.
 - [ ] **[L]** `TAG_ALIASES` and `similarTag` (stemming and edit-distance for a near-duplicate warning). Keep `suggestTags` (one click, palette based); plain substring matching is enough for 27 tags.
 - [ ] **[L]** The custom from/to date range in the date filter (`inAddedRange` custom branch, two date inputs, a test). "This week" and "this month" cover it.
-- [ ] **[L]** Compact-density toggle: it only applies to the list layout, and the card-size slider already covers density in the other two.
-- [ ] **[L]** Per-library accent colour picker and its two storage keys. Keep the fixed violet and the fixed Fashion accent in CSS; the head script gets shorter too.
-- [ ] **[L]** The "System" theme option: Dark/Light from the sidebar toggle is enough, and `matchMedia` branches in the head script and `setupTheme` go away.
-- [ ] **[L]** "Export JSON" button: the ZIP contains the same JSON. One export button; keep `?format=json` for scripts.
 
 ### Fewer defaults, fewer fields on screen
 
 - [ ] **[H]** Stop seeding 26 default style tags. 17 of the 27 tags in the UI library have never been used (Brutalist, Glassmorphism, Neumorphism, Retro, Futuristic and 12 more), while the two real favourites ("Clean" 9, "Video Scroll" 6) were added by hand. `canon()` already creates tags on first use. Fashion starts at 0 tags and works fine.
 - [ ] **[L]** Same for fashion types: Pants, Knitwear, Hat, Bag and Accessory have 0 entries. Ship 3 to 4 defaults and let `canon()` add the rest.
-- [ ] **[M]** Make Found via optional per library. In Fashion it is empty on 30 of 30 entries but still has a filter dropdown, a form field, a Settings list, a Stats card and an autofill guess. A per-library `features` entry in `SPACES` (`foundVia: false`) hides all five.
 - [ ] **[M]** Hide Boards in Fashion until one exists (0 boards, 0 entries on one): the nav item, board filter, picker and form chips are empty chrome there.
 - [ ] **[M]** Add form: keep Screenshot, URL, Title, Type, Tags, and put Note, Boards, Found via and Favourite under "More details". Notes are filled on 1 of 30 UI entries and 0 of 30 in Fashion.
 - [ ] **[M]** Detail view: show empty optional fields as "+ Add note", "+ Add to board" until used, instead of 13 permanent inputs.
-- [ ] **[L]** Card hover overlay has five icon buttons (open, copy URL, board, pin, favourite). Keep open and favourite; board, copy and pin live in the detail view. Fewer targets over the picture.
-- [ ] **[L]** Skeleton cards, View Transitions (`withTransition`) and the toast countdown bar: pure polish on a local app that loads in tens of milliseconds. Cut any that show a frame drop.
 
 ### Whole screens to reconsider
 
-- [ ] **[M]** Favourites as a separate screen. It renders `state.entries.filter(favorite)` into its own grid (`renderFavorites`, `view-favorites`, `fav-grid`, nav item, `F` key) while Browse has a ♥ Favorites chip: two routes to one list. Keep the chip, delete the screen.
-- [ ] **[L]** Keyboard Shortcuts as a full sidebar screen for 14 lines. Make `?` open a small dialog (the confirm modal exists) and delete `view-shortcuts` plus the nav item.
-- [ ] **[M]** Cut single-letter shortcuts to `N` (new), `/` (search), `G` (switch library) and `?`. `B O F S T R` navigate to screens one click away, and the "Single-key shortcuts" toggle in Settings exists only because they misfire.
 - [ ] **[?]** The Stats page. For 30 entries it shows one or two bars, an empty "Found via" in Fashion and a colour strip. Either remove it (`stats.js`, `libraryStats`, CSS, nav item, `T`, tests) and keep the entry count in the sidebar footer, or make it earn its place with the Fashion numbers in section 18.
 - [ ] **[L]** `SPACES.fields` promises "any extra string field" but the forms only render `brand` and `price`, and the README's "Recipes" example would store data it cannot edit. Either render `fields` generically or trim the README claim to what works.
 
 ### Repo hygiene
 
 - [ ] **[H]** Already parked, now measured: `.git` is 32 MB because screenshots are committed (61 tracked files under `uploads/`, plus both libraries) and the "Update fashion library data and uploads" commits keep adding to it. History cannot shrink without a rewrite, so stop committing data before the next one.
-- [ ] **[L]** Delete generated `CHANGELOG.md` from the repo and print it on demand (`npm run changelog`), or keep it but filter the data commits; today it is a copy of `git log`.
 - [ ] **[L]** Drop `docs/sidebar-collapsed.png` from the README in favour of one real Browse screenshot per library; the collapsed sidebar is the least informative picture of the app.
 
 ---
@@ -364,6 +291,87 @@ Less is more. Each line says what goes, what it costs to keep, and the evidence.
 - [x] **[H]** `uuid` dependency: `crypto.randomUUID()` does the same and `server.js` already requires `crypto`. Two call sites, one fewer package.
 - [x] **[H]** `compression` dependency and middleware. The server only listens on `127.0.0.1`; gzip over loopback costs CPU and saves nothing.
 - [x] **[M]** Fixture-based tests for `pageInfo` against realistic shop markup: Shopify, WooCommerce, Squarespace, `AggregateOffer`, `offers` as array, `priceSpecification` arrays, `hasVariant`. Autofill is the most fragile piece and the most used.
+- [x] **[M]** Serve shared constants from the server: `MAX_SCREENSHOTS` is duplicated in `entry.js:11` with a "keep in step" comment. A tiny `/api/config` (limits, space defaults) removes the drift risk.
+- [x] **[M]** `// @ts-check` + JSDoc `@typedef Entry` and a `tsc --noEmit` script: type safety without a build step, and catches the `entry.palette` / `style_tags` shape drift that `normalizeEntry` guards by hand.
+- [x] **[L]** `engines: { node: ">=20" }` in `package.json` (code uses `Object.hasOwn`, `AbortSignal.timeout`, `??=`); fail early with a clear message on old Node.
+- [x] **[L]** ESLint or Biome config and `npm run lint` in CI (unused variables, accidental globals, `==`).
+- [x] **[L]** Playwright smoke test (add → tag → favorite → delete → undo) as an optional script, not in default `npm test`.
+- [x] **[L]** `npm run seed`: generate 30 sample entries with generated screenshots for demos, README images and manual testing without touching real data.
+- [x] **[L]** Dependabot (npm + actions) config; `sharp` and `express` are the two that matter.
+- [x] **[L]** `.editorconfig` and a single formatting convention (the code already reads consistently; lock it in).
+- [x] **[M]** `priceTotal` adds every price as dollars, so `EUR 120` and `$100` total `$220`. Sum only bare/USD prices and append "+ 1 in another currency", or leave non-USD out of the total.
+- [x] **[L]** `priceOf` takes the first number in the text: `2 for $100` sorts as 2 and `from $90 to $120` as 90. Prefer the number next to a currency symbol, fall back to the first.
+- [x] **[L]** `persistFilters` saves the search text too, so reopening the app can show "No entries match your filters" because of a query from last week. Persist the filters, start with an empty search box.
+- [x] **[M]** Validate `date_added` in `normalizeEntry`/`libraryProblems`. A hand-edited bad date gives `Invalid Date` in the sort, the date filter and Stats (all call `new Date()` on it unguarded).
+- [x] **[M]** `libraryProblems` checks board ids but not screenshot files. Entries pointing at files that are not in `uploads/` (the usual result of restoring an old JSON backup) only show up as grey placeholders. Count them at startup and show "3 broken images" in Settings → Storage.
+- [x] **[M]** A corrupt `library.json` is moved aside and Omniview starts **empty**. Fall back to the newest file in `db/backups/` instead and say so in a banner ("Restored from backup 2026-10-17: library.json was unreadable").
+- [x] **[L]** `purgeTrash` runs only at startup and when Settings → Trash is opened, so a server left running for weeks never purges. Run it from the daily `backupDaily` path.
+- [x] **[L]** `docs/EXPORT_FORMAT.md` does not list `pinned`, `bought`, `visited_at` or `price_was`, all of which are in every exported entry. Document them.
+- [x] **[M]** Add a test that fails when an entry field is missing from `docs/EXPORT_FORMAT.md`: create an entry, export, compare keys with the doc's bold field names. It would have caught the line above.
+- [x] **[L]** README API table lacks `/api/trash*`, `/api/visit`, `/api/storage`, `/api/optimize`, `/api/health`, `/api/spaces` and the dry-run `GET /api/cleanup`. A test that compares `app.router` routes with the table keeps it honest.
+- [x] **[L]** README project tree lists 9 modules; `autofill.js`, `lib.js` and `stats.js` are missing, and `test/` is "API tests" though it has four files.
+- [x] **[L]** `package.json` still describes Omniview as a "Personal design reference library" (it holds a wishlist too).
+- [x] **[L]** Three fashion entries are priced 425 on the same shop: probably colourways saved as separate entries. `findDuplicate` can't see it (different URLs). Warn "Looks like a colourway of <entry>" when shop, title stem and price match.
+- [x] **[M]** Read `<link rel="canonical">`/`og:url` in `pageInfo` and offer "Use cleaned link". Better saved URLs, and duplicate detection beyond the Shopify rule.
+- [x] **[M]** Strip `utm_*`, `fbclid`, `gclid` from the URL **when saving**, not only when comparing (`TRACKING_PARAM` only feeds `normalizeUrl`). Saved links currently keep the tracking junk.
+- [x] **[M]** In the image picker, collapse near-identical candidates (same path, different `?width=` or `_300x` suffix), prefer the largest, and skip anything under ~200px (logos, sprites) when choosing the default cover.
+- [x] **[M]** After autofill, say what happened in one line: "Filled name, brand, price, type. Skipped colour (2 matches)". The guesses already know which they skipped.
+- [x] **[M]** Bulk action "Re-run autofill (blanks only)" for selected entries, with a diff before applying. Covers old entries from before autofill improved and entries saved offline.
+- [x] **[L]** Slow unfurl: show "Still trying…" at 3 s with a Cancel (`AbortController`) instead of a silent 8 s wait.
+- [x] **[L]** Dropping a link (from the address bar or a page) anywhere on the window starts a new entry with autofill. Dropped files already work; `text/uri-list` does not.
+- [x] **[L]** Extend the "strip ` | Brand - Shop` title tails" idea (parked for Fashion) to the UI space too: `<title>` often ends in the site name.
+- [x] **[L]** Autofill report per shop: remember which fields came back empty per host (like `omniview-corrections`) and show "bronsonshop.com: colour missing 4/15" in Settings. Two shops are 23 of 30 fashion entries, so one shop-specific rule beats more generic heuristics.
+- [x] **[L]** Rate-limit page fetches to one per second per host. Pasting many links from one shop (the batch-add flow) is exactly what gets an IP blocked.
+- [x] **[L]** Cache `/api/unfurl` answers for ~10 minutes per URL; re-pasting after an edit or pressing Refresh price should not refetch the page.
+- [x] **[L]** The scraper's User-Agent says `Chrome/130.0.0.0`, which ages into a bot signal. Build it from one constant that is easy to bump (or drop the version).
+- [x] **[L]** Sort "Recently edited" now that `updated_at` exists (FINDINGS asked for it only after that field landed).
+- [x] **[M]** Filter and Group by **shop** (hostname). 23 of 30 fashion entries come from two hosts; "everything from Barbour" is the natural question and brand is only a guess at it.
+- [x] **[L]** Sort by brand A to Z in Fashion.
+- [x] **[M]** Fashion Stats: wishlist total, bought total, average price, price spread, entries per brand. Today the Stats page draws the same cards as UI, and for Fashion "Found via" and "Top tags" say "Nothing yet".
+- [x] **[L]** Hide Stats cards that are empty instead of rendering "Nothing yet." (Fashion: tags 0, found via 0).
+- [x] **[M]** Bulk set **brand**, **colour** and **found via**. Bulk can only tag, untag, set type, board, favourite; a wrong brand guess repeats across a whole shop.
+- [x] **[M]** Brand rename/merge. Brand is free text with autofill suggestions, so `Bronson Mfg.` / `Bronson MFG` variants can still appear; Tags, Types and Found via have merge UI, Brand has none. Inline in the brand filter dropdown is enough.
+- [x] **[M]** Empty result: say which filter is to blame and what dropping it gives ("Remove Shoes → 8 results"). The chips and facet counts already have the numbers.
+- [x] **[L]** "New" dot on entries added since you last opened the app (store one timestamp in `localStorage`).
+- [x] **[L]** Group headings: collapsible, with a subtotal in Fashion ("Dr. Martens · 2 · $270").
+- [x] **[M]** After Refresh price, mark the card "▼ $20" when the price fell and add a bulk "Refresh prices of the visible list" that runs one at a time with a delay. Still manual (the "no background tracking" decision stands), but you stop opening 15 entries one by one.
+- [x] **[L]** Fuzzy search fallback: if an exact search finds nothing, retry with edit distance 1 on title and brand (`barbor` finds Barbour).
+- [x] **[L]** Restore scroll position per library when switching with `G` (switching currently re-renders from the top).
+- [x] **[L]** Show image dimensions and file size under the screenshot ("1440×900 · 312 KB"). Makes the Optimise decision visible per entry.
+- [x] **[L]** Autosave an unsaved detail note to `localStorage` the way the Add form saves drafts; the dirty guard only warns.
+- [x] **[L]** Set `document.title` per view and open entry ("Omniview · Boards", "Wool overcoat · Omniview") so tab switchers and browser history are readable.
+- [x] **[L]** Triage mode for untagged entries: one large screenshot at a time, tag chips on number keys, Space for next. Pairs with the parked "Needs attention" filter.
+- [x] **[M]** Persist an image hash on the entry when a screenshot is attached. `findDuplicateImage` reads and SHA-256s every screenshot in both libraries on the first upload after each restart (39 MB now, grows with the library).
+- [x] **[L]** Hide the heartbeat's silence: `setInterval(... api.get('/api/health').catch(() => {}))` swallows connection errors, so a stopped server shows nothing until the next click. If the poll stays, show "Omniview stopped. Retry" when it fails (otherwise remove it, section 19).
+- [x] **[L]** Close "The first paint uses the wrong theme": the inline script in `<head>` does it.
+- [x] **[L]** Close "Entry cards are not keyboard-reachable" down to "arrow keys inside the grid" (above): cards have `tabIndex=0` and Enter.
+- [x] **[L]** Close the `updated_at` half of "The entry has no `updated_at` or `last_viewed`"; only `last_viewed` is still open, and `visited_at` partly covers it.
+- [x] **[L]** Re-rank "Real screenshots via headless Chromium": 18 of 30 fashion entries use the page's own `og:image`, which for a product photo is the right image. The capture upgrade now only matters for the UI library.
+- [x] **[L]** Still open and still true, in one place: `isMobile = entry.type === 'Mobile App'` at `browse.js` (the UI types are Website and Start Page), Google Fonts still loaded from `index.html`, no CSP/`nosniff` headers.
+- [x] **[M]** `<link rel="modulepreload">` ×11 in `index.html`. Loopback latency is under 5 ms and the list is already stale (`stats.js` is missing).
+- [x] **[L]** `db/library.json.bak` and the `db/*.bak` line in `.gitignore`: nothing writes `.bak` files any more.
+- [x] **[M]** The derived `screenshot` field ("kept for older clients and exports"). There are no older clients. It is mirrored from `screenshots[0]` in `normalizeEntry` and used about 18 times; read `screenshots[0]` instead, drop it from the file and the export.
+- [x] **[L]** The 14 copies of the caret SVG in `index.html` while `CARET_SVG` exists in `state.js`; one CSS `::after` mask replaces all of them.
+- [x] **[L]** Hide the "Page image" badge in Fashion. 18 of 30 cards have it, and there the page's product photo is the correct image, so the badge is noise.
+- [x] **[L]** The `GET /api/entries` server-side sort. The client sorts everything again; the server already stores entries in order.
+- [x] **[M]** `GET /api/health` and the 10-second poll in `main.js`. Every API answer already carries `X-Save-Error`; check it in `api.js` on each response and when the tab regains focus. One endpoint, one timer and one request per tab every 10 s gone. (Or keep it and make it show "server stopped", section 18.)
+- [x] **[M]** Make delete-with-undo use the Trash. `deleteEntriesWithUndo` hides the entries, waits 5 s, and only then sends the delete; closing the tab inside those 5 s silently keeps entries you "deleted", and the failure path reloads the whole list. With Trash in place: delete at once (soft), and Undo calls `POST /api/trash/:id/restore`. Removes the timer, the `undone` flag and the cross-space bookkeeping.
+- [x] **[M]** Factory reset (Danger Zone, typed library name, `/api/reset`, its confirm body, its tests). Trash plus seven backups cover mistakes; a real reset is deleting `db/<library>.json`. Also one less destructive endpoint on localhost.
+- [x] **[M]** "Both libraries" toggle (`filter-both`, `renderAlso`, `alsoCache`, `.also-section`). The two libraries share no vocabulary (websites vs jackets), and the design record says "never shown together".
+- [x] **[M]** Pin (card button, detail button, sort rule, `pinned` field, export). Favourite already means "important" and 0 of 60 entries are pinned. Two flags for one idea.
+- [x] **[L]** "Recent" chip, `omniview-recent` storage and `recordRecent`. Newest sort covers 30 entries, and "recent" is a third meaning of "seen" next to `visited_at` and `updated_at`.
+- [x] **[L]** Contrast badge (`contrastRatio`, `contrastLevel`, the AA/AAA label and their tests). Interesting, but nothing in the workflow acts on it.
+- [x] **[L]** Compact-density toggle: it only applies to the list layout, and the card-size slider already covers density in the other two.
+- [x] **[L]** Per-library accent colour picker and its two storage keys. Keep the fixed violet and the fixed Fashion accent in CSS; the head script gets shorter too.
+- [x] **[L]** The "System" theme option: Dark/Light from the sidebar toggle is enough, and `matchMedia` branches in the head script and `setupTheme` go away.
+- [x] **[L]** "Export JSON" button: the ZIP contains the same JSON. One export button; keep `?format=json` for scripts.
+- [x] **[M]** Make Found via optional per library. In Fashion it is empty on 30 of 30 entries but still has a filter dropdown, a form field, a Settings list, a Stats card and an autofill guess. A per-library `features` entry in `SPACES` (`foundVia: false`) hides all five.
+- [x] **[L]** Card hover overlay has five icon buttons (open, copy URL, board, pin, favourite). Keep open and favourite; board, copy and pin live in the detail view. Fewer targets over the picture.
+- [x] **[L]** Skeleton cards, View Transitions (`withTransition`) and the toast countdown bar: pure polish on a local app that loads in tens of milliseconds. Cut any that show a frame drop.
+- [x] **[M]** Favourites as a separate screen. It renders `state.entries.filter(favorite)` into its own grid (`renderFavorites`, `view-favorites`, `fav-grid`, nav item, `F` key) while Browse has a ♥ Favorites chip: two routes to one list. Keep the chip, delete the screen.
+- [x] **[L]** Keyboard Shortcuts as a full sidebar screen for 14 lines. Make `?` open a small dialog (the confirm modal exists) and delete `view-shortcuts` plus the nav item.
+- [x] **[M]** Cut single-letter shortcuts to `N` (new), `/` (search), `G` (switch library) and `?`. `B O F S T R` navigate to screens one click away, and the "Single-key shortcuts" toggle in Settings exists only because they misfire.
+- [x] **[L]** Delete generated `CHANGELOG.md` from the repo and print it on demand (`npm run changelog`), or keep it but filter the data commits; today it is a copy of `git log`.
 
 ## Skipped
 
@@ -457,6 +465,7 @@ Parked for now, not rejected.
 - [ ] **[L]** Random button and the `R` key, if neither is used in a month. At 30 entries the grid is the shuffle.
 - [ ] **[L]** The `visited_at` badge and `/api/visit` if "Open all links" is not used on a board. 0 of 60 entries have it today.
 - [ ] **[L]** Board decoration: colour dot *and* emoji *and* pin-to-sidebar *and* description *and* manual order. None of the 3 boards uses any of them. Keep emoji and manual order; cut colour and pin first.
+
 
 
 

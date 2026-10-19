@@ -1,14 +1,14 @@
 // Entry point: boots the app and owns navigation, theme, the sidebar, global
 // keyboard shortcuts, and paste / drag-and-drop of images.
 
-import { state, SPACES, isHttpUrl, spaceKey } from './state.js';
-import { api } from './api.js';
+import { state, SPACES, FEATURES, config, isHttpUrl } from './state.js';
+import { api, recheck } from './api.js';
 import {
-  isOpen, confirm_, toastError, setupConfirmModal, setupPromptModal, setupLightbox, closeLightbox, withTransition
+  isOpen, confirm_, toastError, setupConfirmModal, setupPromptModal, setupLightbox, closeLightbox
 } from './modals.js';
 import { setupCombos } from './options.js';
 import {
-  loadPersistedFilters, setupSearch, setupFilters, setupLayoutSwitch, setupBulk, setBulkMode, renderBrowse, renderFavorites, updateStats
+  loadPersistedFilters, setupSearch, setupFilters, setupLayoutSwitch, setupBulk, setBulkMode, renderBrowse, updateStats
 } from './browse.js';
 import { renderStats } from './stats.js';
 import { setupBoards, renderBoards, closeBoardPicker, closeBoardEdit } from './boards.js';
@@ -17,10 +17,12 @@ import {
   addPendingFiles, applyDetailScreenshots, pasteUrlIntoForm, stepDetail, stepShot
 } from './entry.js';
 import { setupSettings, renderSettings } from './settings.js';
+import { setupTriage } from './triage.js';
 
 const $ = id => document.getElementById(id);
 
 async function init() {
+  markOpened();
   await loadSpaces();
   loadPersistedFilters();
   applySpaceUI();
@@ -42,11 +44,16 @@ async function init() {
   setupLightbox();
   setupBoards();
   setupSettings();
+  setupTriage();
   setupImageInput();
   renderBrowse();
 
-  // A failed save happens after the request that caused it has been answered; this ping surfaces it.
-  setInterval(() => api.get('/api/health').catch(() => {}), 10000);
+  $('save-banner-retry').addEventListener('click', recheck);
+  $('notice-banner-close').addEventListener('click', () => {
+    try { localStorage.setItem(`omniview-notice-${state.space}`, NOTICES[state.space] || ''); } catch { /* storage unavailable */ }
+    $('notice-banner').hidden = true;
+  });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) recheck(); });
 
   window.addEventListener('beforeunload', e => {
     if (isFormDirty()) { e.preventDefault(); e.returnValue = ''; }
@@ -63,12 +70,31 @@ const SPACE_ICONS = {
   ui: '<rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M1.5 6h13" stroke="currentColor" stroke-width="1.5"/>',
   fashion: '<path d="M5.5 2L1.5 4.5l1.5 3 1.5-.8V14h7V6.7l1.5.8 1.5-3L10.5 2c-.3 1-1.2 1.7-2.5 1.7S5.8 3 5.5 2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>'
 };
+// A library the server had to restore from a backup says so once per notice.
+const NOTICES = {};
+function showNotice() {
+  const text = NOTICES[state.space];
+  let seen = null;
+  try { seen = localStorage.getItem(`omniview-notice-${state.space}`); } catch { /* storage unavailable */ }
+  $('notice-banner').hidden = !text || seen === text;
+  $('notice-banner-text').textContent = text || '';
+}
+
+// "New" dots mark what was added since the app was last opened; the stamp moves on at every start.
+function markOpened() {
+  try {
+    state.sinceOpen = Number(localStorage.getItem('omniview-last-open')) || 0;
+    localStorage.setItem('omniview-last-open', String(Date.now()));
+  } catch { /* storage unavailable: no dots */ }
+}
+
 const DEFAULT_SPACE_ICON = '<path d="M2 4.5A1.5 1.5 0 013.5 3h3l1.5 2h4.5A1.5 1.5 0 0114 6.5v6a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 12.5v-8z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>';
 
 async function loadSpaces() {
   const list = await api.get('/api/spaces', 'ui');
   Object.keys(SPACES).forEach(k => delete SPACES[k]);
-  list.forEach(s => { SPACES[s.name] = s.label; });
+  list.forEach(s => { SPACES[s.name] = s.label; FEATURES[s.name] = s.features || {}; NOTICES[s.name] = s.notice; });
+  Object.assign(config, await api.get('/api/config', 'ui'));
   if (!SPACES[state.space]) state.space = 'ui';
   $('space-switch').replaceChildren(...list.map(s => {
     const b = document.createElement('button');
@@ -94,9 +120,12 @@ export async function loadAll() {
   $('browse-loading').style.display = 'none';
 }
 
+// Remembers where each library was scrolled to, so G brings you back to the same spot.
+const scrollAt = {};
+
 // ═══════════════════════════════════════════ PASTE / DROP IMAGE ══
 const isImage = f => f.type && f.type.startsWith('image/');
-const anyDialogOpen = () => ['confirm-overlay', 'prompt-overlay', 'board-picker-overlay', 'board-edit-overlay', 'lightbox-overlay'].some(isOpen);
+const anyDialogOpen = () => ['confirm-overlay', 'prompt-overlay', 'board-picker-overlay', 'board-edit-overlay', 'lightbox-overlay', 'triage-overlay'].some(isOpen);
 
 // Hands images to whatever is showing: the open entry (as extra screenshots),
 // otherwise a new entry in the Add form.
@@ -121,15 +150,23 @@ function setupImageInput() {
     pasteUrlIntoForm(text);
   });
 
-  // Dropping an image anywhere on the window works, not just on the drop zone.
-  const hasFiles = e => [...((e.dataTransfer && e.dataTransfer.types) || [])].includes('Files');
+  // Dropping an image anywhere on the window works, not just on the drop zone. So does a link
+  // (from the address bar or a page): it starts a new entry with autofill.
+  const dragTypes = e => [...((e.dataTransfer && e.dataTransfer.types) || [])];
+  const hasFiles = e => dragTypes(e).includes('Files');
+  const hasLink = e => dragTypes(e).includes('text/uri-list');
   let depth = 0;
   const endDrag = () => { depth = 0; document.body.classList.remove('file-drag'); };
   window.addEventListener('dragenter', e => { if (hasFiles(e)) { depth++; document.body.classList.add('file-drag'); } });
   window.addEventListener('dragleave', e => { if (hasFiles(e) && --depth <= 0) endDrag(); });
-  window.addEventListener('dragover', e => { if (hasFiles(e)) e.preventDefault(); });
+  window.addEventListener('dragover', e => { if (hasFiles(e) || hasLink(e)) e.preventDefault(); });
   window.addEventListener('drop', e => {
     endDrag();
+    if (!hasFiles(e) && hasLink(e) && !e.defaultPrevented && !anyDialogOpen()) {
+      const url = e.dataTransfer.getData('text/uri-list').split('\n').find(l => isHttpUrl(l.trim()))?.trim();
+      if (url) { e.preventDefault(); if (state.view !== 'add') navigate('add', () => pasteUrlIntoForm(url)); else pasteUrlIntoForm(url); }
+      return;
+    }
     if (!hasFiles(e)) return;
     const alreadyHandled = e.defaultPrevented; // the Add form's drop zone handles its own drops
     e.preventDefault(); // otherwise the browser would navigate to the dropped file
@@ -142,7 +179,7 @@ function setupNav() {
   document.querySelectorAll('[data-view]').forEach(el => {
     el.addEventListener('click', e => {
       e.preventDefault();
-      withTransition(() => navigate(el.dataset.view));
+      navigate(el.dataset.view);
     });
   });
 }
@@ -156,8 +193,16 @@ export function navigate(view, then) {
   doNavigate(view, then);
 }
 
+const VIEW_TITLES = { browse: '', boards: 'Boards', add: 'Add Entry', stats: 'Stats', settings: 'Settings' };
+
+// The tab title names the library and the screen ("Omniview · Fashion · Boards").
+export function setTitle() {
+  document.title = ['Omniview', state.space === 'ui' ? '' : SPACES[state.space], VIEW_TITLES[state.view]].filter(Boolean).join(' · ');
+}
+
 function doNavigate(view, then) {
   state.view = view;
+  setTitle();
   // Hide all views
   document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
   // Show target view
@@ -169,7 +214,6 @@ function doNavigate(view, then) {
   if (view === 'browse') renderBrowse();
   if (view === 'boards') renderBoards();
   if (view === 'stats') renderStats();
-  if (view === 'favorites') renderFavorites();
   if (view === 'add') openAddForm();
   if (view === 'settings') renderSettings();
   if (then) then();
@@ -182,7 +226,9 @@ function doNavigate(view, then) {
 function applySpaceUI() {
   const fashion = state.space === 'fashion';
   document.documentElement.dataset.space = state.space;
-  document.title = state.space === 'ui' ? 'Omniview' : `Omniview · ${SPACES[state.space]}`;
+  setTitle();
+  document.documentElement.toggleAttribute('data-no-via', FEATURES[state.space]?.foundVia === false);
+  showNotice();
   document.querySelectorAll('.space-btn').forEach(b => {
     const on = b.dataset.space === state.space;
     b.classList.toggle('active', on);
@@ -197,10 +243,9 @@ function applySpaceUI() {
     el.placeholder = fashion ? el.dataset.fashionPlaceholder : el.dataset.uiPlaceholder;
   });
   document.querySelectorAll('.space-name').forEach(el => { el.textContent = SPACES[state.space]; });
-  // Plain links can't send the X-Space header, so the export links carry it in the URL.
-  $('export-json').href = `/api/export?format=json&space=${state.space}`;
+  // Plain links can't send the X-Space header, so the export link carries it in the URL.
   $('export-zip').href = `/api/export?format=zip&space=${state.space}`;
-  applyAccent();
+  syncFavicon();
 }
 
 function setupSpaceSwitch() {
@@ -218,6 +263,7 @@ export function switchSpace(next) {
 
 async function doSwitchSpace(next) {
   const prev = state.space;
+  scrollAt[prev] = window.scrollY;
   state.space = next; // the requests below go to the new library
   const main = document.querySelector('.main');
   main.classList.add('switching'); // dims the grid so a slow response doesn't look like a hang
@@ -240,58 +286,31 @@ async function doSwitchSpace(next) {
   applySpaceUI();
   updateStats();
   doNavigate(state.view);
+  requestAnimationFrame(() => window.scrollTo(0, scrollAt[next] ?? 0));
 }
 
 // ═══════════════════════════════════════════ THEME ══
-// The stored preference is 'dark', 'light' or 'system'; <html data-theme> always holds
-// the resolved dark/light that the CSS keys on.
-const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
-const storedTheme = () => { try { return localStorage.getItem('omniview-theme'); } catch { return null; } };
-
+// <html data-theme> holds 'dark' or 'light'; the head script in index.html applies it before first paint.
 function setupTheme() {
-  setTheme(storedTheme() || 'dark');
-  systemDark.addEventListener('change', () => { if (storedTheme() === 'system') setTheme('system'); });
-
+  setTheme(localStorage.getItem('omniview-theme') === 'light' ? 'light' : 'dark');
   $('theme-toggle').addEventListener('click', () => {
     setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
   });
   document.querySelectorAll('.theme-btn').forEach(btn => {
     btn.addEventListener('click', () => setTheme(btn.dataset.t));
   });
-
-  $('accent-input').addEventListener('input', e => {
-    try { localStorage.setItem(spaceKey('omniview-accent'), e.target.value); } catch { /* storage unavailable */ }
-    applyAccent();
-  });
-  $('accent-reset').addEventListener('click', () => {
-    try { localStorage.removeItem(spaceKey('omniview-accent')); } catch { /* storage unavailable */ }
-    applyAccent();
-  });
 }
 
-function setTheme(pref) {
-  document.documentElement.dataset.theme = pref === 'system' ? (systemDark.matches ? 'dark' : 'light') : pref;
-  document.documentElement.dataset.themePref = pref;
-  try { localStorage.setItem('omniview-theme', pref); } catch { /* storage unavailable */ }
-  document.querySelectorAll('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.t === pref));
-  applyAccent();
+function setTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  try { localStorage.setItem('omniview-theme', theme); } catch { /* storage unavailable */ }
+  document.querySelectorAll('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.t === theme));
+  syncFavicon();
 }
 
-// A user-picked accent (kept per library) overrides the theme's; clearing it falls back to the
-// theme/library default. The tab icon follows whatever accent is showing.
-export function applyAccent() {
-  const root = document.documentElement;
-  let custom = null;
-  try { custom = localStorage.getItem(spaceKey('omniview-accent')); } catch { /* storage unavailable */ }
-  if (custom && /^#[0-9a-f]{6}$/i.test(custom)) {
-    root.style.setProperty('--accent', custom);
-    root.style.setProperty('--accent-dim', `color-mix(in srgb, ${custom} 15%, transparent)`);
-  } else {
-    root.style.removeProperty('--accent');
-    root.style.removeProperty('--accent-dim');
-  }
-  const accent = getComputedStyle(root).getPropertyValue('--accent').trim() || '#8b7cf8';
-  $('accent-input').value = accent;
+// The tab icon follows whatever accent the theme and library are showing.
+function syncFavicon() {
+  const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#8b7cf8';
   $('favicon').href = 'data:image/svg+xml,' + encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22 22" fill="${accent}"><rect x="1" y="1" width="9" height="9" rx="2" opacity=".9"/><rect x="12" y="1" width="9" height="5" rx="2" opacity=".6"/><rect x="12" y="8" width="9" height="3" rx="1.5" opacity=".4"/><rect x="1" y="12" width="9" height="9" rx="2" opacity=".5"/><rect x="12" y="13" width="9" height="8" rx="2" opacity=".75"/></svg>`);
 }
@@ -314,14 +333,14 @@ function setSidebarCollapsed(collapsed) {
 }
 
 // ═══════════════════════════════════════════ KEYBOARD SHORTCUTS ══
-const shortcutsOn = () => { try { return localStorage.getItem('omniview-shortcuts') !== 'off'; } catch { return true; } };
+const SHORTCUTS = [
+  'N: new entry', '/: focus search', 'G: switch library', '?: this list',
+  'Left / Right: previous or next entry (or screenshot in the lightbox)',
+  'Ctrl+Enter: save the form; Ctrl+Shift+Enter: save and add another',
+  'Esc: close a dialog'
+];
 
 function setupKeyboardShortcuts() {
-  const toggle = $('shortcuts-toggle');
-  toggle.checked = shortcutsOn();
-  toggle.addEventListener('change', () => {
-    try { localStorage.setItem('omniview-shortcuts', toggle.checked ? 'on' : 'off'); } catch { /* storage unavailable */ }
-  });
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       // Dialogs can stack on top of each other (e.g. delete-entry over the
@@ -330,6 +349,7 @@ function setupKeyboardShortcuts() {
       if (isOpen('lightbox-overlay')) return closeLightbox();
       if (isOpen('confirm-overlay')) return $('confirm-cancel').click();
       if (isOpen('prompt-overlay')) return $('prompt-cancel').click();
+      if (isOpen('triage-overlay')) return $('triage-close').click();
       if (isOpen('detail-overlay')) return requestCloseDetail();
       if (isOpen('board-edit-overlay')) return closeBoardEdit();
       if (isOpen('board-picker-overlay')) return closeBoardPicker();
@@ -361,19 +381,13 @@ function setupKeyboardShortcuts() {
     }
 
     if (isOpen('detail-overlay') || anyDialogOpen()) return;
-    if (!shortcutsOn() && e.key !== '?') return;
+    if (isOpen('triage-overlay')) return;
 
     switch (e.key) {
       case '/': e.preventDefault(); navigate('browse'); $('search-input').focus(); break;
       case 'n': case 'N': navigate('add'); break;
-      case 'b': case 'B': navigate('browse'); break;
-      case 'o': case 'O': navigate('boards'); break;
-      case 'f': case 'F': navigate('favorites'); break;
-      case 't': case 'T': navigate('stats'); break;
-      case 's': case 'S': navigate('settings'); break;
-      case 'r': case 'R': $('random-btn').click(); break;
       case 'g': case 'G': { const names = Object.keys(SPACES); switchSpace(names[(names.indexOf(state.space) + 1) % names.length]); break; }
-      case '?': navigate('shortcuts'); break;
+      case '?': confirm_('Keyboard shortcuts', null, '', SHORTCUTS); break;
     }
   });
 }

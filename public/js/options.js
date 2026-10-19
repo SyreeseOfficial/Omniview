@@ -1,7 +1,7 @@
 // The user-managed option lists (tags, types, found-via), the single-select
 // combo dropdowns that edit them, and the Style Tags input widget.
 
-import { state, COLOR_NAMES, CARET_SVG, byName } from './state.js';
+import { state, COLOR_NAMES, byName } from './state.js';
 import { api } from './api.js';
 import { confirm_, prompt_ } from './modals.js';
 import { tagMatches, similarTag, suggestTags } from './lib.js';
@@ -56,7 +56,7 @@ export function setupCombos() {
 function initCombo(id, kindName) {
   const root = document.getElementById(id);
   root.innerHTML =
-    `<div class="combo-field" tabindex="0" role="combobox" aria-haspopup="listbox"><span class="combo-value"></span>${CARET_SVG}</div>` +
+    `<div class="combo-field" tabindex="0" role="combobox" aria-haspopup="listbox"><span class="combo-value"></span></div>` +
     '<div class="combo-dropdown tag-dropdown" style="display:none"></div>';
 
   combos[id] = { root, kind: COMBO_KINDS[kindName], value: '' };

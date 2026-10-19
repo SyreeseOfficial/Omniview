@@ -7,8 +7,12 @@ export { priceOf, isBought };
 // whatever else server.js defines). The server picks one per request from the X-Space
 // header (api.js). name → label; replaced with the server's list at boot (loadSpaces).
 export const SPACES = { ui: 'UI', fashion: 'Fashion' };
+// Parts of the UI a library does without ({ foundVia: false }), and the server's limits; both filled at boot (main.js).
+export const FEATURES = {};
+export const config = { maxScreenshots: 10 };
+export const hasFoundVia = () => FEATURES[state.space]?.foundVia !== false;
 // Fashion starts with bought items hidden; the UI space has no such flag.
-export const defaultFilters = (space = 'ui') => ({ q: '', type: '', tags: [], board: '', color: '', brand: '', via: '', added: '', from: '', to: '', favorite: false, recent: false, hideBought: space === 'fashion', both: false, tagMode: 'any' });
+export const defaultFilters = (space = 'ui') => ({ q: '', type: '', tags: [], board: '', color: '', brand: '', shop: '', via: '', added: '', from: '', to: '', favorite: false, hideBought: space === 'fashion', tagMode: 'any' });
 
 export const state = {
   space: localStorage.getItem('omniview-space') || 'ui', // checked against the server's list at boot
@@ -39,6 +43,7 @@ export const state = {
   detailTags: [],
   detailBoards: new Set(),
   detailShot: 0,
+  sinceOpen: 0,        // when the app was last opened before this session (ms), for the "new" dot; 0 = first run
 };
 
 // ─── Colors ──────────────────────────────────────────────────────────────────
@@ -71,13 +76,9 @@ export function colorName(hex) {
 }
 
 // ─── Icons ───────────────────────────────────────────────────────────────────
-export const CARET_SVG = '<svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-
 // Blank-image mark shown wherever an entry has no uploaded screenshot.
 export const PLACEHOLDER_SVG = '<svg width="28" height="28" viewBox="0 0 28 28" fill="none"><rect x="2" y="5" width="24" height="18" rx="3" stroke="currentColor" stroke-width="1.5"/><circle cx="9" cy="12" r="2" stroke="currentColor" stroke-width="1.3"/><path d="M2 19l7-5 4 3.5 3.5-2.5 9.5 6" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
 
-export const COPY_ICON = '<svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M8.5 2.5v-.5a1 1 0 00-1-1h-5a1 1 0 00-1 1v5a1 1 0 001 1h.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
-export const BOARD_ICON = '<svg width="13" height="13" viewBox="0 0 13 13" fill="none"><rect x="1.5" y="1.5" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M6.5 4.2v4.6M4.2 6.5h4.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
 
 export const OPEN_ICON = '<svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M5 2H2v9h9V8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M7.5 1.5H11.5V5.5M11.5 1.5L6 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
@@ -113,13 +114,22 @@ export function thumbImg(file, alt = '') {
 
 export function titleOf(e) { return e.title || cleanUrl(e.url); }
 
+// The cover image (first screenshot) of an entry, or undefined.
+export const coverOf = e => e.screenshots[0];
+
 // "Acme · $120 (was $150)" under a fashion entry's name (any part may be missing).
 export const brandPrice = e => [e.brand, e.price && (e.price_was && e.price_was !== e.price ? `${e.price} (was ${e.price_was})` : e.price)].filter(Boolean).join(' · ');
+
+// How much a price fell since the last Refresh price ("▼ $20"), or '' when it did not fall.
+export const priceDrop = e => {
+  const now = priceOf(e), was = priceOf({ price: e.price_was });
+  return now !== null && was !== null && now < was ? `▼ $${Math.round(was - now)}` : '';
+};
 
 // "$1,420" for a fashion list, '' in the UI space. Prices in another currency are not added in.
 export const priceTotal = entries => (state.space === 'fashion' ? formatTotal(entries) : '');
 
-// Per-space localStorage key, so each library remembers its own filters and recents.
+// Per-space localStorage key, so each library remembers its own filters, layout and drafts.
 export const spaceKey = base => (state.space === 'ui' ? base : `${base}-${state.space}`);
 
 // A board's name with its emoji, when it has one.

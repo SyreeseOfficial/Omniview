@@ -68,6 +68,7 @@ const currentSpace = () => spaceStore.getStore() || 'ui';
 // never have to guard against a missing array.
 const validDate = d => typeof d === 'string' && !Number.isNaN(Date.parse(d));
 
+/** @param {import('./types').Entry} e */
 function normalizeEntry(e, space) {
   if (!Array.isArray(e.style_tags)) e.style_tags = [];
   if (!Array.isArray(e.boards)) e.boards = [];
@@ -288,7 +289,7 @@ function purgeTrash(all = false, lib = SPACES[currentSpace()]) {
 // parsers on purpose: they call next() from a stream event, which drops the async
 // context on some Node versions if it was entered before them. multer does the
 // same, so the upload route re-binds after it.
-const bindSpace = (req, res, next) => spaceStore.run(req.space || 'ui', next);
+const bindSpace = (req, res, next) => spaceStore.run(res.locals.space || 'ui', next);
 
 module.exports = {
   DB_PATH, UPLOADS_DIR, THUMBS_DIR, BACKUP_DIR, LOCK_PATH, TRASH_DAYS,

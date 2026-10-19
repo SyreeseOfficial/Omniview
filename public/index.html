@@ -6,41 +6,23 @@
   <meta name="color-scheme" content="dark light">
   <title>Omniview</title>
   <script>
-    // Applies the saved theme, library and accent before first paint, so the page doesn't flash
-    // the dark/violet defaults. main.js re-applies them (and validates the library) after boot.
+    // Applies the saved theme and library before first paint, so the page doesn't flash
+    // the dark/UI defaults. main.js re-applies them (and validates the library) after boot.
     try {
-      var root = document.documentElement, pref = localStorage.getItem('omniview-theme'), space = localStorage.getItem('omniview-space');
-      if (!/^(dark|light|system)$/.test(pref)) pref = 'dark';
-      if (!/^[a-z]+$/.test(space)) space = 'ui';
-      root.dataset.themePref = pref;
-      root.dataset.theme = pref === 'system' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : pref;
-      root.dataset.space = space;
-      var accent = localStorage.getItem(space === 'ui' ? 'omniview-accent' : 'omniview-accent-' + space);
-      if (/^#[0-9a-f]{6}$/i.test(accent)) {
-        root.style.setProperty('--accent', accent);
-        root.style.setProperty('--accent-dim', 'color-mix(in srgb, ' + accent + ' 15%, transparent)');
-      }
+      var root = document.documentElement, theme = localStorage.getItem('omniview-theme'), space = localStorage.getItem('omniview-space');
+      root.dataset.theme = theme === 'light' ? 'light' : 'dark';
+      root.dataset.space = /^[a-z]+$/.test(space) ? space : 'ui';
     } catch (e) { /* storage unavailable: keep the defaults */ }
   </script>
   <link rel="icon" id="favicon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2022%2022'%20fill='%238b7cf8'%3E%3Crect%20x='1'%20y='1'%20width='9'%20height='9'%20rx='2'%20opacity='.9'/%3E%3Crect%20x='12'%20y='1'%20width='9'%20height='5'%20rx='2'%20opacity='.6'/%3E%3Crect%20x='12'%20y='8'%20width='9'%20height='3'%20rx='1.5'%20opacity='.4'/%3E%3Crect%20x='1'%20y='12'%20width='9'%20height='9'%20rx='2'%20opacity='.5'/%3E%3Crect%20x='12'%20y='13'%20width='9'%20height='8'%20rx='2'%20opacity='.75'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Fraunces:ital,wght@0,300;0,400;1,300&display=swap">
   <link rel="stylesheet" href="styles.css">
-  <link rel="modulepreload" href="js/main.js">
-  <link rel="modulepreload" href="js/api.js">
-  <link rel="modulepreload" href="js/autofill.js">
-  <link rel="modulepreload" href="js/boards.js">
-  <link rel="modulepreload" href="js/browse.js">
-  <link rel="modulepreload" href="js/entry.js">
-  <link rel="modulepreload" href="js/lib.js">
-  <link rel="modulepreload" href="js/modals.js">
-  <link rel="modulepreload" href="js/options.js">
-  <link rel="modulepreload" href="js/settings.js">
-  <link rel="modulepreload" href="js/state.js">
 </head>
 <body>
 
-<div class="save-banner" id="save-banner" role="alert" hidden></div>
+<div class="save-banner" id="save-banner" role="alert" hidden><span id="save-banner-text"></span> <button type="button" class="link-btn" id="save-banner-retry" hidden>Retry</button></div>
+<div class="save-banner notice-banner" id="notice-banner" role="status" hidden><span id="notice-banner-text"></span> <button type="button" class="link-btn" id="notice-banner-close">Dismiss</button></div>
 
 <!-- ═══════════════════════════════════════════ SIDEBAR ══ -->
 <aside class="sidebar">
@@ -75,11 +57,6 @@
       <span class="nav-badge" id="nav-boards-count"></span>
     </a>
     <div class="sidebar-boards" id="sidebar-boards"></div>
-    <a class="nav-item" data-view="favorites" href="#" title="Favorites">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13.5l-5.5-5a3.18 3.18 0 010-4.5 3.18 3.18 0 014.5 0L8 5l1-1a3.18 3.18 0 014.5 0 3.18 3.18 0 010 4.5L8 13.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
-      <span class="nav-label">Favorites</span>
-      <span class="nav-badge" id="nav-fav-count"></span>
-    </a>
     <div class="nav-divider"></div>
     <a class="nav-item nav-add" data-view="add" href="#" title="Add Entry">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v6M5 8h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -92,10 +69,6 @@
     <a class="nav-item" data-view="settings" href="#" title="Settings">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.3 3.3l1.4 1.4M11.3 11.3l1.4 1.4M3.3 12.7l1.4-1.4M11.3 4.7l1.4-1.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
       <span class="nav-label">Settings</span>
-    </a>
-    <a class="nav-item" data-view="shortcuts" href="#" title="Keyboard Shortcuts">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="10" rx="1.5" stroke="currentColor" stroke-width="1.5"/><circle cx="4" cy="6" r=".6" fill="currentColor"/><circle cx="7" cy="6" r=".6" fill="currentColor"/><circle cx="10" cy="6" r=".6" fill="currentColor"/><circle cx="13" cy="6" r=".6" fill="currentColor"/><rect x="4" y="9" width="8" height="1.3" rx=".65" fill="currentColor"/></svg>
-      <span class="nav-label">Shortcuts</span>
     </a>
   </nav>
 
@@ -129,12 +102,11 @@
               <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="1" y="2" width="3" height="3" rx="0.5" stroke="currentColor" stroke-width="1.4"/><rect x="1" y="6.5" width="3" height="3" rx="0.5" stroke="currentColor" stroke-width="1.4"/><rect x="1" y="11" width="3" height="3" rx="0.5" stroke="currentColor" stroke-width="1.4"/><line x1="6" y1="3.5" x2="15" y2="3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><line x1="6" y1="8" x2="15" y2="8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><line x1="6" y1="12.5" x2="15" y2="12.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
             </button>
           </div>
-          <button class="btn-icon" id="density-toggle" title="Compact rows" aria-label="Compact rows" aria-pressed="false" style="display:none">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 3.5h12M2 6.5h12M2 9.5h12M2 12.5h12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-          </button>
-          <button class="btn-icon" id="random-btn" title="Surprise me (R)" aria-label="Open a random entry">
+          <button class="btn-icon" id="random-btn" title="Surprise me" aria-label="Open a random entry">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1.5" y="1.5" width="13" height="13" rx="2.5" stroke="currentColor" stroke-width="1.4"/><circle cx="5.2" cy="5.2" r="1" fill="currentColor"/><circle cx="10.8" cy="5.2" r="1" fill="currentColor"/><circle cx="8" cy="8" r="1" fill="currentColor"/><circle cx="5.2" cy="10.8" r="1" fill="currentColor"/><circle cx="10.8" cy="10.8" r="1" fill="currentColor"/></svg>
           </button>
+          <button class="btn-sm fashion-only" id="refresh-prices-btn" title="Re-read the price of every item in the list below, one at a time">Refresh prices</button>
+          <button class="btn-sm ui-only" id="triage-btn" title="Tag untagged entries one at a time" style="display:none">Triage</button>
           <button class="btn-icon" id="bulk-toggle" title="Multi-select" aria-label="Multi-select" aria-pressed="false">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="4" width="3" height="3" rx="0.5" stroke="currentColor" stroke-width="1.4"/><rect x="1" y="9" width="3" height="3" rx="0.5" stroke="currentColor" stroke-width="1.4"/><line x1="6" y1="5.5" x2="15" y2="5.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><line x1="6" y1="10.5" x2="15" y2="10.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
           </button>
@@ -156,7 +128,6 @@
         <details class="filter-dropdown" id="filter-type-dd">
           <summary>
             <span id="filter-type-label">All Types</span>
-            <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </summary>
           <div class="filter-panel">
             <div class="filter-check-list" id="filter-type-list"></div>
@@ -166,10 +137,19 @@
         <details class="filter-dropdown fashion-only" id="filter-brand-dd">
           <summary>
             <span id="filter-brand-label">All Brands</span>
-            <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </summary>
           <div class="filter-panel">
             <div class="filter-check-list" id="filter-brand-list"></div>
+            <button type="button" class="filter-panel-clear" id="brand-rename-btn" style="display:none">Rename or merge…</button>
+          </div>
+        </details>
+
+        <details class="filter-dropdown fashion-only" id="filter-shop-dd">
+          <summary>
+            <span id="filter-shop-label">All Shops</span>
+          </summary>
+          <div class="filter-panel">
+            <div class="filter-check-list" id="filter-shop-list"></div>
           </div>
         </details>
 
@@ -177,7 +157,6 @@
           <summary>
             <span data-fashion-text="Tags">Style Tags</span>
             <span class="filter-count" id="filter-tags-count" style="display:none"></span>
-            <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </summary>
           <div class="filter-panel">
             <div class="filter-panel-head">
@@ -195,17 +174,15 @@
         <details class="filter-dropdown" id="filter-boards-dd">
           <summary>
             <span id="filter-boards-label">All Boards</span>
-            <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </summary>
           <div class="filter-panel">
             <div class="filter-check-list" id="filter-boards-list"></div>
           </div>
         </details>
 
-        <details class="filter-dropdown" id="filter-via-dd">
+        <details class="filter-dropdown via-only" id="filter-via-dd">
           <summary>
             <span id="filter-via-label">Any Source</span>
-            <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </summary>
           <div class="filter-panel">
             <div class="filter-check-list" id="filter-via-list"></div>
@@ -215,7 +192,6 @@
         <details class="filter-dropdown" id="filter-color-dd">
           <summary>
             <span id="filter-color-label">All Colors</span>
-            <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </summary>
           <div class="filter-panel">
             <div class="swatch-grid" id="filter-color-list"></div>
@@ -225,7 +201,6 @@
         <details class="filter-dropdown" id="filter-added-dd">
           <summary>
             <span id="filter-added-label">Any Date</span>
-            <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </summary>
           <div class="filter-panel">
             <div class="filter-check-list" id="filter-added-list"></div>
@@ -239,14 +214,10 @@
 
         <button class="chip chip-fav" id="filter-fav" aria-pressed="false">♥ Favorites</button>
         <button class="chip fashion-only" id="filter-bought" aria-pressed="false" title="Hide entries tagged &quot;bought&quot;">Hide bought</button>
-        <button class="chip" id="filter-recent" aria-pressed="false" title="Entries you opened recently">Recent</button>
-
-        <button class="chip" id="filter-both" aria-pressed="false" title="Also show matches from the other library under the results">Both libraries</button>
 
         <details class="filter-dropdown" id="filter-sort-dd">
           <summary>
             <span id="filter-sort-label">Sort: Newest</span>
-            <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </summary>
           <div class="filter-panel">
             <div class="filter-check-list" id="filter-sort-list"></div>
@@ -256,7 +227,6 @@
         <details class="filter-dropdown" id="filter-group-dd">
           <summary>
             <span id="filter-group-label">Group: None</span>
-            <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </summary>
           <div class="filter-panel">
             <div class="filter-check-list" id="filter-group-list"></div>
@@ -274,12 +244,18 @@
           <option value="tag">Add tag</option>
           <option value="untag">Remove tag</option>
           <option value="setType">Set type</option>
+          <option value="setBrand" class="fashion-only">Set brand</option>
+          <option value="setColor">Set color</option>
+          <option value="setFoundVia" class="via-only">Set found via</option>
+          <option value="autofill">Re-run autofill (blanks only)</option>
           <option value="addToBoard">Add to board</option>
           <option value="removeFromBoard">Remove from board</option>
           <option value="favorite">Favorite</option>
           <option value="unfavorite">Unfavorite</option>
         </select>
         <select id="bulk-value" class="bulk-select" style="display:none" aria-label="Bulk action value"></select>
+        <input id="bulk-text" class="bulk-select" list="bulk-brands" style="display:none" placeholder="Brand…" aria-label="Brand" autocomplete="off">
+        <datalist id="bulk-brands"></datalist>
         <button class="btn-sm" id="bulk-apply">Apply</button>
         <button class="btn-sm btn-danger" id="bulk-delete">Delete Selected</button>
         <button class="btn-sm btn-ghost" id="bulk-cancel">Cancel</button>
@@ -287,27 +263,19 @@
     </header>
 
     <div class="grid-container">
-      <div class="loading-state" id="browse-loading" role="status" aria-label="Loading">
-        <div class="entry-grid">
-          <div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div>
-          <div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div><div class="skeleton-card"></div>
-        </div>
-      </div>
+      <div class="loading-state" id="browse-loading" role="status">Loading…</div>
       <div class="entry-grid" id="entry-grid"></div>
       <div class="entry-list" id="entry-list" style="display:none"></div>
-      <section class="also-section" id="also-section" style="display:none">
-        <div class="group-heading" id="also-heading"></div>
-        <div class="entry-grid" id="also-grid"></div>
-      </section>
       <div class="empty-state" id="browse-empty" style="display:none">
         <div class="empty-icon" data-fashion-text="🧥">🎨</div>
         <div id="browse-onboarding" style="display:none">
           <p><strong>Paste a screenshot, or drop an image anywhere</strong> to start your library.</p>
-          <p class="empty-hint"><kbd class="kbd">Ctrl</kbd> + <kbd class="kbd">V</kbd> to paste · <kbd class="kbd">N</kbd> for a new entry</p>
+          <p class="empty-hint"><kbd class="kbd">Ctrl</kbd> + <kbd class="kbd">V</kbd> to paste · <kbd class="kbd">N</kbd> for a new entry · <kbd class="kbd">?</kbd> for shortcuts</p>
           <button class="btn-primary" data-view="add">Add Entry</button>
         </div>
         <div id="browse-no-match" style="display:none">
-          <p>No entries match your filters.</p>
+          <p id="no-match-text">No entries match your filters.</p>
+          <div class="no-match-fixes" id="no-match-fixes"></div>
         </div>
       </div>
     </div>
@@ -352,18 +320,6 @@
     </div>
   </section>
 
-  <!-- ── FAVORITES VIEW ── -->
-  <section class="view" id="view-favorites" style="display:none">
-    <header class="view-header">
-      <h1 class="view-title">Favorites</h1>
-    </header>
-    <div class="entry-grid" id="fav-grid"></div>
-    <div class="empty-state" id="fav-empty" style="display:none">
-      <div class="empty-icon">♥</div>
-      <p>No favorites yet. Star entries you love.</p>
-    </div>
-  </section>
-
   <!-- ── ADD ENTRY VIEW ── -->
   <section class="view" id="view-add" style="display:none">
     <header class="view-header">
@@ -398,7 +354,11 @@
             <button type="button" class="link-btn" id="dupe-open">Open it</button>
             <button type="button" class="link-btn" id="dupe-add">Add anyway</button>
           </div>
-          <div class="unfurl-status" id="unfurl-status" style="display:none" aria-live="polite"></div>
+          <div class="dupe-warning" id="colourway-warning" style="display:none">
+            <span>Looks like a colourway of <strong id="colourway-name"></strong>.</span>
+            <button type="button" class="link-btn" id="colourway-open">Open it</button>
+          </div>
+          <div class="unfurl-status" id="unfurl-status" style="display:none" aria-live="polite"><span id="unfurl-text"></span> <button type="button" class="link-btn" id="unfurl-cancel" style="display:none">Cancel</button> <button type="button" class="link-btn" id="unfurl-clean" style="display:none"></button></div>
           <div class="unfurl-images" id="unfurl-images" style="display:none"></div>
         </div>
 
@@ -427,7 +387,7 @@
           <div class="combo" id="f-color"></div>
         </div>
 
-        <div class="form-group">
+        <div class="form-group via-only">
           <label>Found via</label>
           <div class="combo" id="f-found-via"></div>
         </div>
@@ -486,19 +446,7 @@
           <div class="theme-switch">
             <button class="theme-btn active" data-t="dark">Dark</button>
             <button class="theme-btn" data-t="light">Light</button>
-            <button class="theme-btn" data-t="system">System</button>
           </div>
-        </div>
-        <div class="settings-row">
-          <span>Accent color <span class="settings-hint">(this library)</span></span>
-          <span class="accent-pick">
-            <input type="color" id="accent-input" aria-label="Accent color">
-            <button class="btn-sm" id="accent-reset">Reset</button>
-          </span>
-        </div>
-        <div class="settings-row">
-          <label for="shortcuts-toggle">Single-key shortcuts <span class="settings-hint">(N, B, O, F, S, R, G, /; <kbd class="kbd">?</kbd> always works)</span></label>
-          <input type="checkbox" id="shortcuts-toggle">
         </div>
       </div>
 
@@ -507,7 +455,6 @@
           <summary class="settings-heading">
             <span data-fashion-text="Tags">Style Tags</span>
             <span class="settings-count" id="tag-count"></span>
-            <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </summary>
           <div class="tag-manager">
             <div class="tag-add-row">
@@ -532,7 +479,6 @@
           <summary class="settings-heading">
             <span data-fashion-text="Item Types">Entry Types</span>
             <span class="settings-count" id="type-count"></span>
-            <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </summary>
           <div class="tag-manager">
             <div class="tag-add-row">
@@ -544,12 +490,11 @@
         </details>
       </div>
 
-      <div class="settings-section">
+      <div class="settings-section via-only">
         <details class="settings-collapse">
           <summary class="settings-heading">
             Found Via Options
             <span class="settings-count" id="found-via-count"></span>
-            <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </summary>
           <div class="tag-manager">
             <div class="tag-add-row">
@@ -562,11 +507,21 @@
       </div>
 
       <div class="settings-section">
+        <details class="settings-collapse">
+          <summary class="settings-heading">
+            <span>Autofill report</span>
+          </summary>
+          <p class="settings-desc">Which fields autofill could not find, per shop (this library, this browser). One rule for a shop that is always missing the same thing beats a better guess for everyone.</p>
+          <div class="tag-list" id="autofill-report"></div>
+          <button class="btn-sm" id="autofill-report-clear">Clear report</button>
+        </details>
+      </div>
+
+      <div class="settings-section">
         <h2 class="settings-heading">Export / Backup</h2>
         <p class="settings-desc">Download the library you're in (<span class="space-name"></span>) to back it up or move it. The other library is exported separately.</p>
         <div class="settings-row-actions">
-          <a class="btn-sm" id="export-json" href="/api/export?format=json" download>Export JSON</a>
-          <a class="btn-sm" id="export-zip" href="/api/export?format=zip" download>Export ZIP (with screenshots)</a>
+          <a class="btn-sm" id="export-zip" href="/api/export?format=zip" download>Export (ZIP with screenshots)</a>
         </div>
       </div>
 
@@ -575,7 +530,6 @@
           <summary class="settings-heading">
             <span>Trash</span>
             <span class="settings-count" id="trash-count"></span>
-            <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </summary>
           <p class="settings-desc">Deleted entries from the <span class="space-name"></span> library stay here for 30 days, then are removed for good.</p>
           <div class="tag-list" id="trash-list"></div>
@@ -592,21 +546,6 @@
         <button class="btn-sm" id="optimize-btn">Optimise screenshots</button>
       </div>
 
-      <div class="settings-section settings-danger-zone">
-        <details class="settings-collapse" id="danger-zone">
-          <summary class="settings-heading">
-            <span>Danger Zone</span>
-            <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </summary>
-          <p class="settings-desc">Factory reset permanently deletes all entries, boards, and tags in the <span class="space-name"></span> library. The other library is not touched. This cannot be undone.</p>
-          <label class="settings-desc" for="reset-confirm">Type <strong class="space-name"></strong> to enable the button.</label>
-          <div class="price-row">
-            <input type="text" id="reset-confirm" class="detail-input" autocomplete="off" spellcheck="false">
-            <button class="btn-danger" id="reset-btn" disabled>Factory Reset</button>
-          </div>
-        </details>
-      </div>
-
     </div>
   </section>
 
@@ -616,49 +555,6 @@
       <h1 class="view-title">Stats</h1>
     </header>
     <div class="stats-grid" id="stats-body"></div>
-  </section>
-
-  <!-- ── SHORTCUTS VIEW ── -->
-  <section class="view" id="view-shortcuts" style="display:none">
-    <header class="view-header">
-      <h1 class="view-title">Keyboard Shortcuts</h1>
-    </header>
-
-    <div class="settings-sections">
-
-      <div class="settings-section">
-        <h2 class="settings-heading">Navigation</h2>
-        <div class="shortcut-group">
-          <div class="settings-row"><span>Go to Browse</span><kbd class="kbd">B</kbd></div>
-          <div class="settings-row"><span>Go to Boards</span><kbd class="kbd">O</kbd></div>
-          <div class="settings-row"><span>Go to Stats</span><kbd class="kbd">T</kbd></div>
-          <div class="settings-row"><span>Go to Favorites</span><kbd class="kbd">F</kbd></div>
-          <div class="settings-row"><span>Go to Settings</span><kbd class="kbd">S</kbd></div>
-          <div class="settings-row"><span>Switch between UI and Fashion</span><kbd class="kbd">G</kbd></div>
-          <div class="settings-row"><span>Show this page</span><kbd class="kbd">?</kbd></div>
-        </div>
-      </div>
-
-      <div class="settings-section">
-        <h2 class="settings-heading">Entries</h2>
-        <div class="shortcut-group">
-          <div class="settings-row"><span>New entry</span><kbd class="kbd">N</kbd></div>
-          <div class="settings-row"><span>Focus search</span><kbd class="kbd">/</kbd></div>
-          <div class="settings-row"><span>Open a random entry</span><kbd class="kbd">R</kbd></div>
-          <div class="settings-row"><span>Previous / next entry (or screenshot in the lightbox)</span><span><kbd class="kbd">←</kbd> <kbd class="kbd">→</kbd></span></div>
-          <div class="settings-row"><span>Save form / add tag</span><span><kbd class="kbd">Ctrl</kbd> + <kbd class="kbd">Enter</kbd></span></div>
-          <div class="settings-row"><span>Save and add another</span><span><kbd class="kbd">Ctrl</kbd> + <kbd class="kbd">Shift</kbd> + <kbd class="kbd">Enter</kbd></span></div>
-        </div>
-      </div>
-
-      <div class="settings-section">
-        <h2 class="settings-heading">General</h2>
-        <div class="shortcut-group">
-          <div class="settings-row"><span>Close dialog / cancel</span><kbd class="kbd">Esc</kbd></div>
-        </div>
-      </div>
-
-    </div>
   </section>
 
 </main>
@@ -680,6 +576,7 @@
         </div>
         <div class="detail-no-screenshot" id="detail-no-screenshot">No screenshot</div>
         <span class="shot-count" id="shot-count" style="display:none"></span>
+        <div class="shot-info" id="shot-info"></div>
         <div class="shot-actions">
           <label class="btn-sm detail-upload-btn" for="detail-screenshot-file">
             <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1v8M3 4.5L6.5 1 10 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M1.5 10.5h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
@@ -695,7 +592,7 @@
           <span id="detail-favicon"></span>
           <a class="detail-url" id="detail-url" target="_blank" rel="noopener"></a>
           <button class="fav-btn" id="detail-fav" title="Toggle favorite" aria-label="Toggle favorite" aria-pressed="false">♥</button>
-          <button class="fav-btn" id="detail-pin" title="Pin to top of Browse" aria-label="Pin to top of Browse" aria-pressed="false">📌</button>
+          <button class="btn-sm" id="detail-copy" title="Copy the link" aria-label="Copy URL">Copy</button>
         </div>
 
         <div class="detail-field">
@@ -754,7 +651,7 @@
           <div class="chip-row" id="detail-boards"></div>
         </div>
 
-        <div class="detail-field">
+        <div class="detail-field via-only">
           <span class="detail-label">Found via</span>
           <div class="combo" id="detail-found-via"></div>
         </div>
@@ -800,6 +697,7 @@
   <div class="modal confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
     <h3 id="confirm-title">Confirm</h3>
     <p id="confirm-body"></p>
+    <ul class="confirm-list" id="confirm-list" hidden></ul>
     <div class="confirm-actions">
       <button class="btn-ghost" id="confirm-cancel">Cancel</button>
       <button class="btn-danger" id="confirm-ok">Delete</button>
@@ -837,6 +735,18 @@
         <button type="submit" class="btn-primary">Save</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ TRIAGE ══ -->
+<div class="modal-overlay" id="triage-overlay" style="display:none">
+  <div class="modal triage-modal" tabindex="-1" role="dialog" aria-modal="true" aria-label="Tag untagged entries">
+    <button class="modal-close" id="triage-close" aria-label="Close">✕</button>
+    <div class="triage-count" id="triage-count"></div>
+    <img class="triage-img" id="triage-img" alt="">
+    <div class="triage-title" id="triage-title"></div>
+    <div class="chip-row triage-tags" id="triage-tags"></div>
+    <div class="triage-hint"><kbd class="kbd">1</kbd>–<kbd class="kbd">9</kbd> toggle a tag · <kbd class="kbd">Space</kbd> next · <kbd class="kbd">Backspace</kbd> back · <kbd class="kbd">Esc</kbd> done</div>
   </div>
 </div>
 

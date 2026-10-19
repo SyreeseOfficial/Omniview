@@ -1,17 +1,35 @@
 {
   "name": "omniview",
   "version": "1.0.0",
-  "description": "Personal design reference library",
+  "description": "Local library for design references (UI screenshots) and a fashion wishlist",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "test": "node --test",
-    "changelog": "(echo '# Changelog'; echo; git log --pretty='- %ad %s (%h)' --date=short) > CHANGELOG.md"
+    "seed": "node scripts/seed.js",
+    "demo": "OMNIVIEW_DB_PATH=demo/db/library.json OMNIVIEW_UPLOADS_DIR=demo/uploads PORT=3738 node server.js",
+    "changelog": "git log --pretty='- %ad %s (%h)' --date=short --invert-grep --grep='library data and uploads'",
+    "e2e": "node e2e/smoke.mjs",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "archiver": "^6.0.1",
     "express": "^5.3.0",
     "multer": "^2.0.0",
     "sharp": "^0.35.5"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/archiver": "^8.0.0",
+    "@types/express": "^5.0.6",
+    "@types/multer": "^2.3.0",
+    "@types/node": "^26.6.5",
+    "eslint": "^10.13.0",
+    "globals": "^17.13.0",
+    "typescript": "^7.0.2"
   }
 }

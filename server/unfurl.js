@@ -220,6 +220,4 @@ router.post('/api/entries/:id/screenshot-url', async (req, res) => {
   res.json({ screenshot: file, screenshots: entry.screenshots, duplicateOf });
 });
 
-module.exports = router;
-router.pageInfo = pageInfo;
-router.politeWait = politeWait;
+module.exports = Object.assign(router, { pageInfo, politeWait });

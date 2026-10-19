@@ -36,26 +36,12 @@ export function showToast(message, opts = {}) {
   close.addEventListener('click', dismiss);
   toast.appendChild(close);
 
-  if (actionLabel) { // visible countdown: the Undo window is exactly the toast's lifetime
-    const bar = document.createElement('div');
-    bar.className = 'toast-bar';
-    bar.style.animationDuration = `${duration}ms`;
-    toast.appendChild(bar);
-  }
-
   container.appendChild(toast);
   const timer = setTimeout(dismiss, duration);
 }
 
 export function toastSuccess(message) { showToast(message, { type: 'success' }); }
 export function toastError(message) { showToast(message, { type: 'error', duration: 5000 }); }
-
-// Runs a DOM update inside a view transition (a short cross-fade) where the browser has them.
-// The update runs a frame late there, so only wrap calls nothing else depends on synchronously.
-export function withTransition(update) {
-  if (!document.startViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return update();
-  document.startViewTransition(update);
-}
 
 // ─── Modal a11y (focus trap + return) ────────────────────────────────────────
 // Tracks nested overlays (e.g. the confirm modal opening on top of the detail
@@ -115,9 +101,16 @@ export function setupConfirmModal() {
   });
 }
 
-export function confirm_(msg, cb, okLabel = 'Delete') {
+// `lines` (optional, plain text) are listed under the message: a diff to review before applying, or a key list.
+// With no `cb` the dialog only informs and offers a single Close button.
+export function confirm_(msg, cb, okLabel = 'Delete', lines = []) {
   document.getElementById('confirm-body').textContent = msg;
+  const list = document.getElementById('confirm-list');
+  list.hidden = !lines.length;
+  list.replaceChildren(...lines.map(l => Object.assign(document.createElement('li'), { textContent: l })));
   document.getElementById('confirm-ok').textContent = okLabel;
+  document.getElementById('confirm-ok').style.display = cb ? '' : 'none';
+  document.getElementById('confirm-cancel').textContent = cb ? 'Cancel' : 'Close';
   openModalOverlay('confirm-overlay');
   confirmCallback = cb;
 }

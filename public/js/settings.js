@@ -1,5 +1,5 @@
 // Settings view: managed option lists (tags with merge/bulk delete, types,
-// found-via), trash, storage stats and cleanup, and factory reset.
+// found-via), the autofill report, trash, and storage stats and cleanup.
 
 import { state, byName, SPACES, titleOf } from './state.js';
 import { api } from './api.js';
@@ -10,6 +10,7 @@ import {
   afterTagsChanged
 } from './options.js';
 import { similarTag, timeAgo } from './lib.js';
+import { reportLines } from './autofill.js';
 import { renderBrowse } from './browse.js';
 import { loadAll } from './main.js';
 
@@ -83,32 +84,33 @@ export function setupSettings() {
     e.target.disabled = false;
   });
 
-  // Typing the library's name is the confirmation, so there's no second dialog.
-  $('reset-confirm').addEventListener('input', () => {
-    $('reset-btn').disabled = $('reset-confirm').value.trim().toLowerCase() !== SPACES[state.space].toLowerCase();
-  });
-  $('reset-btn').addEventListener('click', async () => {
-    try {
-      await api.post('/api/reset', { confirm: 'reset' });
-    } catch (err) { toastError(err.message); return; }
-    await loadAll();
-    renderBrowse();
-    renderSettings();
-    toastSuccess(`${SPACES[state.space]} library reset.`);
+  $('autofill-report-clear').addEventListener('click', () => {
+    try { localStorage.removeItem(reportKey()); } catch { /* storage unavailable */ }
+    renderAutofillReport();
   });
 }
 
+const reportKey = () => `omniview-autofill-report-${state.space}`;
+
+function renderAutofillReport() {
+  let report = {};
+  try { report = JSON.parse(localStorage.getItem(reportKey())) || {}; } catch { /* unreadable: start over */ }
+  const lines = reportLines(report);
+  $('autofill-report').replaceChildren(...(lines.length
+    ? lines.map(text => Object.assign(document.createElement('div'), { className: 'tag-list-item', textContent: text }))
+    : [Object.assign(document.createElement('div'), { className: 'tag-list-empty', textContent: 'Nothing missing so far.' })]));
+  $('autofill-report-clear').disabled = !lines.length;
+}
+
 export function renderSettings() {
-  $('reset-confirm').value = '';
-  $('reset-btn').disabled = true;
-  $('danger-zone').open = false;
   renderTagList();
   renderTypeList();
   renderFoundViaList();
+  renderAutofillReport();
   renderTrash();
   renderStorage();
   // Sync theme buttons
-  const t = document.documentElement.dataset.themePref;
+  const t = document.documentElement.dataset.theme;
   document.querySelectorAll('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.t === t));
 }
 
@@ -167,7 +169,7 @@ async function renderStorage() {
   if (!s) return;
   const n = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
   const rows = [
-    ...Object.entries(s.spaces).map(([name, c]) => [`${SPACES[name]} library`, `${c.entries} ${c.entries === 1 ? 'entry' : 'entries'}${c.trash ? `, ${c.trash} in trash` : ''}`]),
+    ...Object.entries(s.spaces).map(([name, c]) => [`${SPACES[name]} library`, `${c.entries} ${c.entries === 1 ? 'entry' : 'entries'}${c.trash ? `, ${c.trash} in trash` : ''}${c.brokenImages ? `, ${n(c.brokenImages, 'broken image')} (the file is missing from uploads)` : ''}`]),
     ['Uploads', `${n(s.uploads.files, 'file')}, ${mb(s.uploads.bytes)}`],
     ['Thumbnails', `${n(s.thumbs.files, 'file')}, ${mb(s.thumbs.bytes)}`],
     ['Backups', `${n(s.backups.files, 'file')}, ${mb(s.backups.bytes)}`],

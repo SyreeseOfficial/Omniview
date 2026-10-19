@@ -1,19 +1,18 @@
 // The Add Entry form (auto-fill, duplicate check, screenshot queue) and the
 // entry detail modal (screenshot carousel, palette, prev/next, save).
 
-import { state, boardLabel, priceOf, safeHref, isHttpUrl, faviconImg, colorName, thumbImg, titleOf, PLACEHOLDER_SVG, COLOR_NAMES, escHtml } from './state.js';
-import { moreLike, timeAgo, contrastRatio, contrastLevel, dominantColors } from './lib.js';
-import { guessFashionFields, guessFoundVia, applyCorrections, recordCorrections } from './autofill.js';
+import { state, config, hasFoundVia, boardLabel, priceOf, safeHref, isHttpUrl, faviconImg, colorName, thumbImg, titleOf, coverOf, PLACEHOLDER_SVG, COLOR_NAMES, escHtml } from './state.js';
+import { moreLike, timeAgo, dominantColors } from './lib.js';
+import { guessFashionFields, guessFoundVia, applyCorrections, recordCorrections, cleanTitle, recordReport, hostOf } from './autofill.js';
 import { api } from './api.js';
 import {
   confirm_, toastSuccess, toastError, openModalOverlay, closeModalOverlay, isOpen, openLightbox, setLightboxSrc
 } from './modals.js';
 import { comboValue, setCombo, setupTagInput, renderTagPills, renderTagSuggestions } from './options.js';
-import { renderBrowse, deleteEntriesWithUndo, toggleFavorite, toggleFlag, markVisited, recordRecent, focusCard } from './browse.js';
-import { navigate } from './main.js';
+import { renderBrowse, deleteEntriesWithUndo, toggleFavorite, toggleFlag, markVisited, focusCard } from './browse.js';
+import { navigate, setTitle } from './main.js';
 
 const $ = id => document.getElementById(id);
-const MAX_SCREENSHOTS = 10; // keep in step with the server
 
 // ═══════════════════════════════════════════ ADD FORM ══
 let formSnapshot = null;
@@ -32,6 +31,7 @@ const store = (key, value) => { try { value == null ? localStorage.removeItem(ke
 const draftKey = () => `omniview-draft-${state.space}`;
 const foundViaKey = () => `omniview-found-via-${state.space}`;
 const CORRECTIONS_KEY = 'omniview-corrections';
+const reportKey = () => `omniview-autofill-report-${state.space}`;
 let formBaseline = '';
 let foundViaDefault = '';
 let addAnother = false;
@@ -76,9 +76,7 @@ function restoreDraft() {
   state.formBoards = new Set((d.boards || []).filter(id => state.boards.some(b => b.id === id)));
   renderFormTagPills();
   updateFormBoardChips();
-  const status = $('unfurl-status');
-  status.style.display = '';
-  status.textContent = 'Restored your unsaved draft (screenshots are not kept).';
+  setStatus('Restored your unsaved draft (screenshots are not kept).');
 }
 
 export function isFormDirty() {
@@ -99,6 +97,7 @@ export function openAddForm({ keep, restore = !keep } = {}) {
   $('f-note').value = '';
   $('f-favorite').checked = false;
   showDuplicate(null);
+  showColourway(null);
   $('unfurl-status').style.display = 'none';
   clearAutofillUi();
   lastCheckedUrl = '';
@@ -128,7 +127,7 @@ function clearPending() {
 export function addPendingFiles(files) {
   const images = [...files].filter(f => f.type.startsWith('image/'));
   for (const file of images) {
-    if (state.pending.length >= MAX_SCREENSHOTS) { toastError(`At most ${MAX_SCREENSHOTS} screenshots per entry.`); break; }
+    if (state.pending.length >= config.maxScreenshots) { toastError(`At most ${config.maxScreenshots} screenshots per entry.`); break; }
     state.pending.push({ file, preview: URL.createObjectURL(file) });
   }
   renderPending();
@@ -208,6 +207,26 @@ async function checkDuplicate(url) {
   } catch { /* the save itself re-checks */ }
 }
 
+// Fashion: the same product saved under another colour is a separate URL, so look for the same shop + price + title stem.
+let colourwayEntry = null;
+
+function showColourway(entry) {
+  colourwayEntry = entry;
+  $('colourway-warning').style.display = entry ? '' : 'none';
+  if (entry) $('colourway-name').textContent = titleOf(entry);
+}
+
+async function checkColourway() {
+  const url = $('f-url').value.trim();
+  const title = $('f-title').value.trim();
+  const price = $('f-price').value.trim();
+  if (state.space !== 'fashion' || !isHttpUrl(url) || !title || !price) return showColourway(null);
+  try {
+    const { colourway } = await api.get(`/api/duplicate?url=${encodeURIComponent(url)}&title=${encodeURIComponent(title)}&price=${encodeURIComponent(price)}`);
+    if ($('f-url').value.trim() === url) showColourway(colourway);
+  } catch { /* only a hint */ }
+}
+
 // Highlights a field the auto-fill filled until the user touches it.
 function markAutofilled(id) {
   const group = $(id).closest('.form-group');
@@ -221,6 +240,18 @@ function clearAutofillUi() {
   document.querySelectorAll('#entry-form .autofilled').forEach(el => el.classList.remove('autofilled'));
   $('unfurl-images').style.display = 'none';
   $('unfurl-images').innerHTML = '';
+}
+
+// The line under the URL: what autofill is doing or did. `cancel` shows a Cancel link, `clean` offers the page's own link.
+function setStatus(text, { cancel = false, clean = '' } = {}) {
+  $('unfurl-status').style.display = '';
+  $('unfurl-text').textContent = text;
+  $('unfurl-cancel').style.display = cancel ? '' : 'none';
+  const btn = $('unfurl-clean');
+  btn.style.display = clean ? '' : 'none';
+  btn.textContent = clean ? 'Use cleaned link' : '';
+  btn.title = clean;
+  btn.dataset.url = clean;
 }
 
 // Other images found on the page, as thumbnails to click into the screenshot queue.
@@ -237,7 +268,7 @@ function renderCandidateImages(images) {
     img.addEventListener('error', () => btn.remove());
     btn.appendChild(img);
     btn.addEventListener('click', () => {
-      if (state.pending.length >= MAX_SCREENSHOTS) return toastError(`At most ${MAX_SCREENSHOTS} screenshots per entry.`);
+      if (state.pending.length >= config.maxScreenshots) return toastError(`At most ${config.maxScreenshots} screenshots per entry.`);
       state.pending.push({ url: src, preview: src });
       renderPending();
       btn.remove();
@@ -247,19 +278,30 @@ function renderCandidateImages(images) {
   box.style.display = images.length ? '' : 'none';
 }
 
+// The page's own link (canonical / og:url) when it differs from what was pasted, without tracking junk, on the same site.
+function cleanedLink(info, url) {
+  const strip = u => u.replace(/\/+$/, '');
+  return info.canonical && strip(info.canonical) !== strip(url) && hostOf(info.canonical) === hostOf(url) ? info.canonical : '';
+}
+
+let unfurlAbort = null;
+
 // Fills title, favicon, and the page's images as queued screenshots. In the UI
 // space it also takes the theme-color; in Fashion it takes brand, price, type
 // and color. Only fills fields/slots the user hasn't already used.
 async function autofill(url) {
-  const status = $('unfurl-status');
-  status.style.display = '';
-  status.textContent = 'Fetching page info…';
+  unfurlAbort?.abort();
+  const abort = unfurlAbort = new AbortController();
+  setStatus('Fetching page info…');
   clearAutofillUi();
+  const slow = setTimeout(() => setStatus('Still trying…', { cancel: true }), 3000);
   try {
-    const info = await api.get(`/api/unfurl?url=${encodeURIComponent(url)}`);
+    const info = await api.get(`/api/unfurl?url=${encodeURIComponent(url)}`, undefined, abort.signal);
+    clearTimeout(slow);
     if ($('f-url').value.trim() !== url) return;
     state.pageInfo = { favicon: info.favicon, forUrl: url };
     const filled = [];
+    const skipped = [];
     const wrote = {};
     const fill = (label, id, value, isCombo) => {
       if (!value) return;
@@ -269,9 +311,12 @@ async function autofill(url) {
       filled.push(label);
       wrote[label] = value;
     };
-    fill('title', 'f-title', info.title);
+    const title = state.space === 'ui' ? cleanTitle(info.title, info.siteName, url) : info.title;
+    fill(state.space === 'fashion' ? 'name' : 'title', 'f-title', title);
+    let found;
     if (state.space === 'ui') {
       if (info.themeColor) fill('color', 'f-color', colorName(info.themeColor), true);
+      found = { title: info.title, color: info.themeColor };
     } else {
       const raw = guessFashionFields(info, url, { entries: state.entries, types: state.types, colors: COLOR_NAMES });
       const guess = applyCorrections(raw, url, load(CORRECTIONS_KEY, {}));
@@ -279,8 +324,11 @@ async function autofill(url) {
       fill('price', 'f-price', guess.price);
       fill('type', 'f-type', guess.type, true);
       fill('color', 'f-color', guess.color, true);
+      for (const [field, n] of Object.entries(raw.skipped)) skipped.push(`${field} (${n} matches)`);
       state.pageInfo.guess = { raw, wrote };
+      found = { brand: guess.brand, price: guess.price, type: guess.type, color: guess.color };
     }
+    store(reportKey(), recordReport(load(reportKey(), {}), url, found));
     const images = info.images || [];
     const queueFirst = images.length && !state.pending.length;
     if (queueFirst) {
@@ -289,9 +337,18 @@ async function autofill(url) {
       filled.push('image');
     }
     renderCandidateImages(queueFirst ? images.slice(1) : images);
-    status.textContent = filled.length ? `Filled: ${filled.join(', ')}.` : 'Nothing new to fill in.';
+    const summary = [filled.length && `Filled ${filled.join(', ')}.`, skipped.length && `Skipped ${skipped.join(', ')}.`].filter(Boolean).join(' ');
+    setStatus(summary || 'Nothing new to fill in.', { clean: cleanedLink(info, url) });
+    checkColourway();
   } catch (err) {
-    if ($('f-url').value.trim() === url) status.textContent = /blocked/.test(err.message) ? `${err.message}.` : `Couldn't read the page (${err.message}).`;
+    clearTimeout(slow);
+    if (err.name === 'AbortError') {
+      if (abort.cancelled) setStatus('Cancelled. Fill the fields in yourself, or paste the link again.');
+      return;
+    }
+    if ($('f-url').value.trim() === url) setStatus(/blocked/.test(err.message) ? `${err.message}.` : `Couldn't read the page (${err.message}).`);
+  } finally {
+    if (unfurlAbort === abort) unfurlAbort = null;
   }
 }
 
@@ -301,11 +358,13 @@ function onUrlEntered() {
   lastCheckedUrl = url;
   state.allowDuplicate = false;
   showDuplicate(null);
+  showColourway(null);
+  unfurlAbort?.abort();
   $('unfurl-status').style.display = 'none';
   clearAutofillUi();
   if (!isHttpUrl(url)) return;
   // Found via comes from the host alone, so it works even when the page can't be read.
-  const via = guessFoundVia(url, state.foundVia);
+  const via = hasFoundVia() ? guessFoundVia(url, state.foundVia) : '';
   const cur = comboValue('f-found-via');
   if (via && (!cur || cur === foundViaDefault)) { setCombo('f-found-via', via); markAutofilled('f-found-via'); }
   checkDuplicate(url);
@@ -342,6 +401,20 @@ export function setupAddForm() {
   urlInput.addEventListener('paste', () => setTimeout(onUrlEntered, 0));
   $('dupe-open').addEventListener('click', () => { if (dupeEntry) openDetail(dupeEntry.id); });
   $('dupe-add').addEventListener('click', () => { state.allowDuplicate = true; showDuplicate(null); });
+  $('colourway-open').addEventListener('click', () => { if (colourwayEntry) openDetail(colourwayEntry.id); });
+  $('f-title').addEventListener('change', checkColourway);
+  $('f-price').addEventListener('change', checkColourway);
+  $('unfurl-cancel').addEventListener('click', () => { if (unfurlAbort) { unfurlAbort.cancelled = true; unfurlAbort.abort(); } });
+  $('unfurl-clean').addEventListener('click', () => {
+    const clean = $('unfurl-clean').dataset.url;
+    if (!clean) return;
+    $('f-url').value = clean;
+    lastCheckedUrl = clean;
+    if (state.pageInfo) state.pageInfo.forUrl = clean;
+    $('unfurl-clean').style.display = 'none';
+    checkDuplicate(clean);
+    checkColourway();
+  });
 
   $('paste-url').addEventListener('click', async () => {
     let text = '';
@@ -496,13 +569,12 @@ function showPriceWas() {
   el.style.display = was ? '' : 'none';
 }
 
-// Pin / Bought buttons reflect the entry; both save straight away like the heart does.
+// The Bought button reflects the entry and saves straight away, like the heart does.
 function syncFlagButtons(entry) {
-  for (const [id, on] of [['detail-pin', entry?.pinned], ['detail-bought', entry?.bought]]) {
-    $(id).classList.toggle('is-fav', !!on);
-    $(id).classList.toggle('active', !!on);
-    $(id).setAttribute('aria-pressed', String(!!on));
-  }
+  const on = !!entry?.bought;
+  $('detail-bought').classList.toggle('is-fav', on);
+  $('detail-bought').classList.toggle('active', on);
+  $('detail-bought').setAttribute('aria-pressed', String(on));
 }
 
 function detailSnapshot() {
@@ -545,6 +617,20 @@ function renderDetailShots() {
   $('shot-count').style.display = shots.length > 1 ? '' : 'none';
   $('shot-count').textContent = `${state.detailShot + 1} / ${shots.length}`;
   $('detail-remove-shot').style.display = shots.length ? '' : 'none';
+  $('shot-info').textContent = '';
+  if (shots.length) showShotInfo(shots[state.detailShot]);
+}
+
+// "1440×900 · 312 KB" under the screenshot, so the Optimise decision is visible per entry.
+const shotSizes = new Map(); // file -> bytes
+async function showShotInfo(file) {
+  const img = $('detail-screenshot');
+  if (!shotSizes.has(file)) {
+    shotSizes.set(file, await fetch(`/uploads/${file}`, { method: 'HEAD' }).then(r => Number(r.headers.get('content-length')) || 0, () => 0));
+  }
+  if (!img.complete) await new Promise(resolve => { img.addEventListener('load', resolve, { once: true }); img.addEventListener('error', resolve, { once: true }); });
+  if (!state.detailEntry || state.detailEntry.screenshots[state.detailShot] !== file) return; // moved on meanwhile
+  $('shot-info').textContent = [img.naturalWidth && `${img.naturalWidth}×${img.naturalHeight}`, shotSizes.get(file) && formatSize(shotSizes.get(file))].filter(Boolean).join(' · ');
 }
 
 // Moves to the next/previous screenshot (wrapping); keeps an open lightbox in step.
@@ -555,6 +641,9 @@ export function stepShot(delta) {
   renderDetailShots();
   if (isOpen('lightbox-overlay')) setLightboxSrc(`/uploads/${shots[state.detailShot]}`);
 }
+
+const noteDraftKey = id => `omniview-note-draft-${state.space}-${id}`;
+const clearNoteDraft = () => { if (state.detailEntry) store(noteDraftKey(state.detailEntry.id), null); };
 
 const exactDate = iso => new Date(iso).toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' });
 
@@ -589,14 +678,6 @@ function renderPalette(entry) {
     });
     wrap.appendChild(sw);
   });
-  if (entry.palette.length > 1) {
-    const ratio = contrastRatio(entry.palette[0], entry.palette[1]);
-    const badge = document.createElement('span');
-    badge.className = 'contrast-badge' + (contrastLevel(ratio) ? '' : ' fail');
-    badge.textContent = `${ratio.toFixed(1)}:1 ${contrastLevel(ratio) || 'Fails AA'}`;
-    badge.title = 'WCAG contrast between the two most dominant colors (4.5 passes AA for body text, 7 passes AAA)';
-    wrap.appendChild(badge);
-  }
 }
 
 export async function applyDetailScreenshots(files) {
@@ -625,14 +706,28 @@ export function setupDetailModal() {
   $('detail-prev').addEventListener('click', () => stepDetail(-1));
   $('detail-next').addEventListener('click', () => stepDetail(1));
 
-  for (const [id, flag] of [['detail-pin', 'pinned'], ['detail-bought', 'bought']]) {
-    $(id).addEventListener('click', async () => {
-      if (!state.detailEntry) return;
-      await toggleFlag(state.detailEntry.id, flag);
-      state.detailEntry = state.entries.find(e => e.id === state.detailEntry.id);
-      syncFlagButtons(state.detailEntry);
-    });
-  }
+  $('detail-bought').addEventListener('click', async () => {
+    if (!state.detailEntry) return;
+    await toggleFlag(state.detailEntry.id, 'bought');
+    state.detailEntry = state.entries.find(e => e.id === state.detailEntry.id);
+    syncFlagButtons(state.detailEntry);
+  });
+
+  $('detail-copy').addEventListener('click', () => {
+    if (state.detailEntry) navigator.clipboard.writeText(state.detailEntry.url).then(() => toastSuccess('Copied URL.'), () => toastError('Could not copy.'));
+  });
+
+  // An unsaved note survives a crash or closed tab, like the Add form's draft.
+  let noteTimer;
+  $('detail-note').addEventListener('input', () => {
+    clearTimeout(noteTimer);
+    noteTimer = setTimeout(() => {
+      const entry = state.detailEntry;
+      if (!entry) return;
+      const text = $('detail-note').value;
+      store(noteDraftKey(entry.id), text.trim() === entry.note ? null : text);
+    }, 400);
+  });
 
   $('detail-price').addEventListener('input', showPriceWas);
 
@@ -719,6 +814,7 @@ export function setupDetailModal() {
       toastError(err.message);
       return;
     }
+    clearNoteDraft();
     closeDetail();
     renderBrowse();
     toastSuccess('Entry updated.');
@@ -747,7 +843,7 @@ export function openDetail(id) {
 // Fills the (already open) modal with an entry.
 function loadDetail(entry) {
   state.detailEntry = entry;
-  recordRecent(entry.id);
+  document.title = `${titleOf(entry)} · Omniview`;
   // Mutate in place — see the comment in openAddForm for why reassigning breaks the tag dropdown.
   state.detailTags.length = 0;
   state.detailTags.push(...entry.style_tags);
@@ -773,6 +869,7 @@ function loadDetail(entry) {
   setCombo('detail-color', entry.color || '');
   setCombo('detail-found-via', entry.found_via);
   $('detail-note').value = entry.note;
+  const draft = load(noteDraftKey(entry.id), null);
   renderDetailDates(entry);
 
   state.detailShot = 0;
@@ -786,6 +883,10 @@ function loadDetail(entry) {
   const canStep = state.navIds.length > 1 && state.navIds.includes(entry.id);
   $('detail-prev').style.display = $('detail-next').style.display = canStep ? '' : 'none';
   detailBaseline = detailSnapshot();
+  if (draft !== null && draft.trim() !== entry.note) {
+    $('detail-note').value = draft; // after the baseline, so closing still asks about it
+    toastSuccess('Restored your unsaved note.');
+  }
 }
 
 // Previous/next entry in the list the modal was opened from (wrapping).
@@ -801,7 +902,7 @@ export function stepDetail(delta) {
 function goToEntry(next) {
   if (!next) return;
   if (detailSnapshot() === detailBaseline) loadDetail(next);
-  else confirm_('Discard unsaved changes to this entry?', () => loadDetail(next), 'Discard');
+  else confirm_('Discard unsaved changes to this entry?', () => { clearNoteDraft(); loadDetail(next); }, 'Discard');
 }
 
 // Closest entries by palette (UI only) and shared tags/type/color, from what's already in memory.
@@ -816,7 +917,7 @@ function renderSimilar(entry) {
     btn.className = 'similar-item';
     btn.title = titleOf(e);
     btn.setAttribute('aria-label', `Open ${titleOf(e)}`);
-    if (e.screenshot) btn.appendChild(thumbImg(e.screenshot)); else btn.innerHTML = PLACEHOLDER_SVG;
+    if (coverOf(e)) btn.appendChild(thumbImg(coverOf(e))); else btn.innerHTML = PLACEHOLDER_SVG;
     btn.addEventListener('click', () => goToEntry(e));
     row.appendChild(btn);
   });
@@ -824,7 +925,7 @@ function renderSimilar(entry) {
 
 // Close button, backdrop click and Esc: asks first when the form holds unsaved edits.
 export function requestCloseDetail() {
-  if (state.detailEntry && detailSnapshot() !== detailBaseline) confirm_('Discard unsaved changes to this entry?', closeDetail, 'Discard');
+  if (state.detailEntry && detailSnapshot() !== detailBaseline) confirm_('Discard unsaved changes to this entry?', () => { clearNoteDraft(); closeDetail(); }, 'Discard');
   else closeDetail();
 }
 
@@ -834,6 +935,7 @@ export function closeDetail() {
   closeModalOverlay('detail-overlay');
   document.body.style.overflow = '';
   state.detailEntry = null;
+  setTitle();
   if (id) focusCard(id);
 }
 

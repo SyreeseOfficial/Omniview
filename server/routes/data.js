@@ -30,7 +30,7 @@ router.get('/api/export', (req, res) => {
     // ZIP with JSON + screenshots
     res.setHeader('Content-Disposition', `attachment; filename="${base}.zip"`);
     res.setHeader('Content-Type', 'application/zip');
-    const archive = archiver('zip');
+    const archive = /** @type {any} */ (archiver)('zip'); // @types/archiver lags the package
     archive.pipe(res);
     archive.append(JSON.stringify(db, null, 2), { name: path.basename(SPACES[space].file) });
     // Add screenshot files

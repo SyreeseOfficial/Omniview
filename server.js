@@ -1,4 +1,11 @@
 'use strict';
+// Type-checked with `npm run typecheck`; the entry shape is in server/types.js.
+
+// package.json "engines" only warns; the code uses AbortSignal.timeout, Object.hasOwn and ??=, so say it plainly.
+if (Number(process.versions.node.split('.')[0]) < 20) {
+  console.error(`Omniview needs Node 20 or newer (this is ${process.version}).`);
+  process.exit(1);
+}
 
 const express = require('express');
 const path = require('path');
@@ -10,7 +17,7 @@ const images = require('./server/images');
 const { SPACES, LOCK_PATH, UPLOADS_DIR, saveError, flushDB, flushSync, libraryProblems, bindSpace, spaceStore, purgeTrash } = store;
 
 const app = express();
-const PORT = process.env.PORT || 3737;
+const PORT = Number(process.env.PORT) || 3737;
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 const REDACT_QUERY = /^\/api\/(unfurl|entries\/[^/]+\/screenshot-url)$/;
@@ -52,7 +59,7 @@ app.use((req, res, next) => {
 app.use('/api', (req, res, next) => {
   const space = req.headers['x-space'] ?? req.query.space ?? 'ui';
   if (typeof space !== 'string' || !Object.hasOwn(SPACES, space)) return res.status(400).json({ error: 'Unknown space' });
-  req.space = space;
+  res.locals.space = space;
   next();
 });
 
@@ -120,18 +127,15 @@ function acquireLock(lockPath) {
     } catch (err) {
       if (err.code !== 'EEXIST') throw err;
       const pid = parseInt(fs.readFileSync(lockPath, 'utf8'), 10);
-      let alive = false;
+      let alive;
       try { process.kill(pid, 0); alive = pid !== process.pid; } catch (e) { alive = e.code === 'EPERM'; }
-      if (alive || attempt) throw new Error(`Another Omniview (PID ${pid}) is already using ${path.dirname(lockPath)}. Stop it first, or delete ${lockPath} if it is not running.`);
+      if (alive || attempt) throw new Error(`Another Omniview (PID ${pid}) is already using ${path.dirname(lockPath)}. Stop it first, or delete ${lockPath} if it is not running.`, { cause: err });
       fs.rmSync(lockPath, { force: true });
     }
   }
 }
 
-module.exports = app;
-app.flushDB = flushDB;
-app.acquireLock = acquireLock;
-app.libraryProblems = libraryProblems;
+module.exports = Object.assign(app, { flushDB, acquireLock, libraryProblems });
 
 if (require.main === module) {
   // A fatal error leaves the process in an unknown state: log it and exit

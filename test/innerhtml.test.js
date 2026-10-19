@@ -5,7 +5,7 @@ import fs from 'node:fs';
 // Grep-level guard for the innerHTML sites: every `${...}` inside a template
 // assigned to innerHTML must be wrapped in escHtml(...) or be one of the
 // trusted constants/numbers below. Add to SAFE only for values that never hold user text.
-const SAFE = new Set(['CARET_SVG', 'PLACEHOLDER_SVG', 'OPEN_ICON', 'COPY_ICON', 'BOARD_ICON']);
+const SAFE = new Set(['PLACEHOLDER_SVG', 'OPEN_ICON']);
 const dir = new URL('../public/js/', import.meta.url);
 
 // Returns the expressions of each top-level `${}` in the template starting after the backtick at `i`.
