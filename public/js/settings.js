@@ -1,7 +1,7 @@
 // Settings view: managed option lists (tags with merge/bulk delete, types,
-// found-via), storage cleanup, and factory reset.
+// found-via), trash, storage stats and cleanup, and factory reset.
 
-import { state, byName, SPACES } from './state.js';
+import { state, byName, SPACES, titleOf } from './state.js';
 import { api } from './api.js';
 import { confirm_, prompt_, toastSuccess, toastError } from './modals.js';
 import {
@@ -9,11 +9,13 @@ import {
   renameTagOption, deleteTagOption, renameTypeOption, deleteTypeOption, renameFoundViaOption, deleteFoundViaOption,
   afterTagsChanged
 } from './options.js';
-import { similarTag } from './lib.js';
+import { similarTag, timeAgo } from './lib.js';
 import { renderBrowse } from './browse.js';
 import { loadAll } from './main.js';
 
 const $ = id => document.getElementById(id);
+
+const mb = bytes => `${(bytes / 1048576).toFixed(1)} MB`;
 
 const selectedTags = new Set(); // tags ticked for merge / bulk delete
 let tagSort = 'name';           // 'name' | 'count'
@@ -47,7 +49,16 @@ export function setupSettings() {
   setupOptionAdder('new-type-input', 'add-type-btn', () => state.types, ensureType, renderTypeList);
   setupOptionAdder('new-found-via-input', 'add-found-via-btn', () => state.foundVia, ensureFoundVia, renderFoundViaList);
 
-  const mb = bytes => `${(bytes / 1048576).toFixed(1)} MB`;
+  $('trash-empty-btn').addEventListener('click', () => {
+    confirm_('Permanently delete everything in the trash, screenshots included? This cannot be undone.', async () => {
+      try {
+        await api.del('/api/trash');
+        renderTrash();
+        renderStorage();
+      } catch (err) { toastError(err.message); }
+    }, 'Empty trash');
+  });
+
   $('cleanup-btn').addEventListener('click', async () => {
     try {
       const { removed, bytes } = await api.get('/api/cleanup');
@@ -56,6 +67,7 @@ export function setupSettings() {
         try {
           await api.post('/api/cleanup');
           toastSuccess(`Removed ${removed} unused ${removed === 1 ? 'file' : 'files'} (${mb(bytes)}).`);
+          renderStorage();
         } catch (err) { toastError(err.message); }
       }, 'Delete');
     } catch (err) { toastError(err.message); }
@@ -66,7 +78,7 @@ export function setupSettings() {
     try {
       const { converted, saved } = await api.post('/api/optimize');
       toastSuccess(converted ? `Optimised ${converted} ${converted === 1 ? 'file' : 'files'}, saved ${mb(saved)}.` : 'Nothing to optimise.');
-      if (converted) { await loadAll(); renderBrowse(); }
+      if (converted) { await loadAll(); renderBrowse(); renderStorage(); }
     } catch (err) { toastError(err.message); }
     e.target.disabled = false;
   });
@@ -87,9 +99,81 @@ export function renderSettings() {
   renderTagList();
   renderTypeList();
   renderFoundViaList();
+  renderTrash();
+  renderStorage();
   // Sync theme buttons
   const t = document.documentElement.dataset.themePref;
   document.querySelectorAll('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.t === t));
+}
+
+// ─── Trash ───────────────────────────────────────────────────────────────────
+async function renderTrash() {
+  const items = await api.get('/api/trash').catch(() => []);
+  $('trash-count').textContent = items.length;
+  $('trash-empty-btn').disabled = !items.length;
+  const list = $('trash-list');
+  list.innerHTML = '';
+  if (!items.length) list.innerHTML = '<div class="tag-list-empty">Trash is empty.</div>';
+  items.forEach(e => {
+    const item = document.createElement('div');
+    item.className = 'tag-list-item';
+    const title = document.createElement('span');
+    title.className = 'tag-list-title';
+    title.textContent = titleOf(e);
+    const hint = document.createElement('small');
+    hint.className = 'tag-list-use';
+    hint.textContent = `deleted ${timeAgo(e.deleted_at)} · ${e.days_left} ${e.days_left === 1 ? 'day' : 'days'} left`;
+
+    const restore = document.createElement('button');
+    restore.className = 'tag-action-btn';
+    restore.textContent = 'Restore';
+    restore.addEventListener('click', async () => {
+      try {
+        await api.post(`/api/trash/${e.id}/restore`);
+        await loadAll();
+        renderBrowse();
+        renderSettings();
+        toastSuccess('Entry restored.');
+      } catch (err) { toastError(err.message); }
+    });
+    const purge = document.createElement('button');
+    purge.className = 'tag-action-btn del';
+    purge.textContent = 'Delete forever';
+    purge.addEventListener('click', () => confirm_(`Permanently delete "${titleOf(e)}" and its screenshots? This cannot be undone.`, async () => {
+      try {
+        await api.del(`/api/trash/${e.id}`);
+        renderTrash();
+        renderStorage();
+      } catch (err) { toastError(err.message); }
+    }, 'Delete forever'));
+
+    const actions = document.createElement('div');
+    actions.className = 'tag-list-actions';
+    actions.append(restore, purge);
+    item.append(title, hint, actions);
+    list.appendChild(item);
+  });
+}
+
+// ─── Storage ─────────────────────────────────────────────────────────────────
+async function renderStorage() {
+  const s = await api.get('/api/storage').catch(() => null);
+  if (!s) return;
+  const n = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
+  const rows = [
+    ...Object.entries(s.spaces).map(([name, c]) => [`${SPACES[name]} library`, `${c.entries} ${c.entries === 1 ? 'entry' : 'entries'}${c.trash ? `, ${c.trash} in trash` : ''}`]),
+    ['Uploads', `${n(s.uploads.files, 'file')}, ${mb(s.uploads.bytes)}`],
+    ['Thumbnails', `${n(s.thumbs.files, 'file')}, ${mb(s.thumbs.bytes)}`],
+    ['Backups', `${n(s.backups.files, 'file')}, ${mb(s.backups.bytes)}`],
+    ['Data folder', s.dataDir],
+    ['Uploads folder', s.uploadsDir]
+  ];
+  const dl = $('storage-stats');
+  dl.replaceChildren(...rows.flatMap(([k, v]) => {
+    const dt = document.createElement('dt'); dt.textContent = k;
+    const dd = document.createElement('dd'); dd.textContent = v;
+    return [dt, dd];
+  }));
 }
 
 // ─── Tags: merge + bulk delete ───────────────────────────────────────────────

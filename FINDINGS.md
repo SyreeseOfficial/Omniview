@@ -1,20 +1,64 @@
 # Omniview: Findings
 
-Reviewed 2026-10-08. Former `UI_UX_IDEAS.md` / `TECHNICAL_IDEAS.md` are merged in at the bottom. Tags: **[H]** high, **[M]** medium, **[L]** low. `[ ]` = open.
+Reviewed 2026-10-08 and 2026-10-13. Former `UI_UX_IDEAS.md` / `TECHNICAL_IDEAS.md` are merged in. Tags: **[H]** high, **[M]** medium, **[L]** low. See `IDEAS.md` for the newer backlog.
 
-# Skip
+## Open
+
+Sorted by priority; within a priority, in the order they were found.
+
+### High
+- [ ] **[H]** Import. Export exists (`/api/export`, JSON + ZIP) but there is no way to restore from it. Add `POST /api/import` accepting the ZIP (merge or replace) and a Settings button.
+- [ ] **[H]** Real screenshots without a browser extension: if `chromium`/`google-chrome` is installed, run `chromium --headless --screenshot=<file> --window-size=1440,900 --hide-scrollbars <url>` from a new `POST /api/entries/:id/capture` (child process, timeout 20 s) and pass the file to `attachScreenshot`. No npm dependency, and it replaces the `og:image` stand-in as the default. Offer a mobile variant (`--window-size=390,844 --user-agent=...`).
+
+### Medium
+- [ ] **[M]** Per-entry fields for what you actually reference: font names, color hex palette, "what I like" note, so notes are structured and searchable.
+- [ ] **[M]** Saved searches / smart collections (e.g. "Dark Mode + Dashboard"). Filters already persist in `localStorage`; name them and list them in the sidebar.
+- [ ] **[M]** A failed ZIP export can kill the server. `GET /api/export?format=zip` pipes an `archiver` stream with no `error` handler (`server.js:812-820`). The server now deliberately `process.exit(1)`s on any uncaught exception (`:899`), and an unhandled `error` event on an EventEmitter is one: a file vanishing between `existsSync` and the read, or the client aborting mid-download, takes the whole app down. Add `archive.on('error', ...)` (log + `res.destroy()`), `archive.on('warning', ...)`, and `res.on('close', () => archive.abort())`.
+- [ ] **[M]** Deleted screenshots are unrecoverable, so restoring a daily backup gives broken images. `backupDaily` copies only `library.json` (`:99-108`), but `DELETE /api/entries/:id` and "Clear screenshot" `rmSync` the image and thumbnail immediately (`removeFiles`, `:150`). Restore yesterday's backup after a bad bulk delete and the entries come back pointing at missing files. Move deleted files to `uploads/.trash/` and purge after 7 days (same cadence as the JSON backups), or include `uploads/` in the backup rotation.
+- [ ] **[M]** The first paint uses the wrong theme. `setupTheme()` runs after `await loadAll()` (`main.js:24-33`), and `index.html` hard-codes `data-theme="dark"`, so a light-theme user sees a dark flash on every load, and the sidebar-collapsed state also applies late (layout jump). Put a 3-line inline script in `<head>` that sets `data-theme` and the collapsed class from `localStorage` before first paint, and default to `prefers-color-scheme` when nothing is stored.
+- [ ] **[M]** Loading the library has no failure state. If `/api/entries` fails (server restarting, port clash), `loadAll()` throws inside `init()` before any `setup*()` call, so the page stays on the spinner with no handlers attached and the `unhandledrejection` toast is the only signal. Catch in `init`, show "Can't reach Omniview. Retry" in the grid area, and keep the rest of the UI inert until it succeeds.
+- [ ] **[M]** Entry cards are not keyboard-reachable. `createCard` builds a `div` with a click handler only (`browse.js:382,447`), and there is no `tabindex`/`role`/`keydown` anywhere in `browse.js`, so Tab skips the whole library and Enter can't open an entry (the list rows have the same problem, `createRow`). Make the card a `<button>`-like element: `tabindex="0"`, `role="button"`, Enter/Space opens, and `aria-label` with the title. Selected state in bulk mode should expose `aria-selected`/`aria-pressed`.
+- [ ] **[M]** "Mobile" cards rely on a magic string. `isMobile = entry.type === 'Mobile App'` (`browse.js:387`), but the default types are `Website` and `Web App` (`server.js:38`), so unless you happened to create exactly "Mobile App", tall phone screenshots are cropped like desktop ones. Store `width`/`height` for every screenshot when `sharp` processes it (`processImage` already opens the file), derive "tall" from aspect ratio, and put `width`/`height` on the `<img>` so masonry stops shifting while images load.
+- [ ] **[M]** Fonts load from Google on every page view (`index.html:7-8`: Inter + Fraunces), which contradicts "Local only, no cloud". Download the woff2 files into `public/fonts/`, add `@font-face`, and remove the `preconnect`. Bonus: the UI then renders offline, and the first paint no longer waits on a third party.
+- [ ] **[M]** Add response headers as a backstop for the innerHTML-heavy renderer (30 `innerHTML` sites): `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and `Content-Security-Policy: default-src 'self'; img-src 'self' data: https:; script-src 'self'; style-src 'self' 'unsafe-inline'` (favicons and unfurled images load from arbitrary https hosts, hence `img-src https:`). With self-hosted fonts the policy needs no external hosts besides images. `/uploads` should also send `nosniff`.
+- [ ] **[M]** Search only does one contiguous substring across title, URL, note and tags (`browse.js:243-248`). `dark dashboard` finds nothing if "dark" is a tag and "dashboard" is in the title; it also ignores `type`, `found_via`, board names and color names. Split the query on whitespace, require every token to match any field, and include the missing fields.
+- [ ] **[M]** Query operators: `tag:minimal`, `type:"web app"`, `board:client`, `is:fav`, `-tag:corporate`, `has:screenshot`. All the data is already in memory; a 25-line parser replaces opening three dropdowns, and it makes saved searches (open item) trivial since a saved search is just a string.
+- [ ] **[M]** Browse routing: the app is a set of show/hide views with no URL state (`doNavigate`, `main.js:119`), so the Back button leaves the app, a refresh drops you out of a board or open entry, and nothing can be bookmarked. Use `location.hash` (`#/boards/<id>`, `#/entry/<id>`, `#/add`), open/close the detail modal with `pushState`, and restore on `popstate`.
+- [ ] **[M]** Compare view: select 2-4 entries in bulk mode and open them side by side (same height, synced zoom, palettes underneath). Choosing between two references is the main reason to look at a design library, and everything needed (selection, lightbox, palette) already exists.
+- [ ] **[M]** Reorder screenshots and choose the cover. The first image is always the cover (`entry.screenshot = entry.screenshots[0]`, `:205`), and the only way to change it is to delete and re-add images, which also re-derives the palette from scratch. Add `PUT /api/entries/:id/screenshots` with an ordered list of filenames (validated against the entry), recompute `palette` when index 0 changes, and a "Set as cover" button in the detail carousel.
+- [ ] **[M]** Dead-link check: a Settings action (and per-entry badge) that HEADs each saved URL with a short timeout and flags 404/DNS failures. Inspiration libraries rot; knowing which references no longer exist is more useful than a prettier grid. Store `last_checked`/`status` on the entry, run it sequentially with a delay so you aren't hammering sites.
+- [ ] **[M]** Make the stored shape versioned: add `"version": 2` to `library.json` and run numbered migrations in `loadDB` instead of the ad-hoc back-fills in `normalizeEntry` (`:50-60`, `:76-77`). It is what the import endpoint will need to accept old exports safely.
+- [ ] **[M]** Save buttons don't disable during the async request (`entry-form` submit, `detail-save`). A double-click or slow upload can create duplicate entries. Disable the button and restore it in a `finally`.
+
+### Low
 - [ ] **[L]** Share a board as a static HTML folder (export board only).
 - [ ] **[L]** Move storage to SQLite (`node:sqlite`) when the library passes ~1,000 entries; JSON is fine until then.
 - [ ] **[L]** Browser extension or bookmarklet: one click captures URL + visible-tab screenshot (`chrome.tabs.captureVisibleTab`) and POSTs to `localhost`. This is the natural next step for a capture tool.
-- [ ] **[M]** Per-entry fields for what you actually reference: font names, color hex palette, "what I like" note, so notes are structured and searchable.
-- [ ] **[M]** Saved searches / smart collections (e.g. "Dark Mode + Dashboard"). Filters already persist in `localStorage`; name them and list them in the sidebar.
-- [ ] **[H]** Import. Export exists (`/api/export`, JSON + ZIP) but there is no way to restore from it. Add `POST /api/import` accepting the ZIP (merge or replace) and a Settings button.
-- [x] **[M]** Fashion space (second library with a sidebar toggle, `price` and `brand` fields). Built; see `docs/FASHION_SPACE.md`.
 - [ ] **[L]** Maybe: batch add. A textarea where you paste many URLs (one per line, e.g. copied from Obsidian), each run through the existing `/api/fetch` and saved as an entry, with duplicate detection. Skips failures and reports them at the end.
+- [ ] **[L]** Editing an entry's URL can create a duplicate. Only `POST` runs `findDuplicate` (`server.js:377`); `PUT /api/entries/:id` accepts any `url` (`:411`), and the 409 flow only exists for creation. Run the same check on `PUT` when `url` changes (excluding self) and return the same `409` + `duplicate` payload unless `force`.
+- [ ] **[L]** Auto-fill breaks on non-UTF-8 pages. `/api/unfurl` always does `buffer.toString('utf8')` (`server.js:584`), so a Shift-JIS or windows-1252 page yields mojibake titles. Read the charset from `Content-Type` or `<meta charset>` and decode with `new TextDecoder(charset)`.
+- [ ] **[L]** The auto-filled "screenshot" is usually the site's `og:image`, i.e. a marketing card rather than the actual UI (`entry.js:143-146`). Label it in the form ("Social preview image, not a screenshot") and keep the "needs real screenshot" state visible on the card (small badge), so the library doesn't silently fill up with logos.
+- [ ] **[L]** Sorting parses `new Date(date_added)` inside the comparator on every render (`browse.js:211-218`, `server.js:357`). Store a numeric `added_at` once (normalise in `normalizeEntry`) and compare numbers; it also gives you a stable tiebreak for imports.
+- [ ] **[L]** The entry has no `updated_at` or `last_viewed`. "Recent" is a per-browser `localStorage` list (`readRecent`), so it disappears with the browser profile and can't be sorted server-side. Add `updated_at` on every write (needed for any merge-on-import conflict anyway) and `last_viewed` on open.
+- [ ] **[L]** `GET /api/entries` returns the whole library, notes included, on every page load, and any mutation that calls `loadAll()` re-downloads it. Fine at 27 entries; at ~1,000 it is megabytes of JSON. Trim the list payload to card fields with notes loaded by `GET /api/entries/:id`.
+- [ ] **[L]** `/api/unfurl` and `/api/entries/:id/screenshot-url` will fetch any URL the user types, including `localhost` and LAN addresses, and follow redirects there. That is intentional for saving your own dev sites, so don't block it, but document it in the README ("never expose this port") and cap redirects (`redirect: 'manual'` with a limit of 5) so a public page can't bounce the server onto an internal URL that was never typed.
+- [ ] **[L]** Sort by color: order by hue of the first palette color (and by lightness within a hue) so the grid becomes a gradient. `colorName` already parses the hex; the sort key is one more function. Also add "Recently viewed" and "Recently edited" to the sort menu once `last_viewed`/`updated_at` exist.
+- [ ] **[L]** Render in chunks. `renderGrid` clears and rebuilds every card on each filter or sort change (`:332-335`). Render the first ~60 and append the next page with an `IntersectionObserver` sentinel; images already use `loading="lazy"`, so the DOM node count is what dominates at 1,000+ entries.
+- [ ] **[L]** Show why an entry matched: highlight the matched term in the title and show the matching note excerpt under the card in list layout when the query hit the note.
+- [ ] **[L]** "Select all matching" in bulk mode (plus "N of M selected" beside it). Today you can only click or shift-range, so re-tagging a filtered set of 200 entries is slow. Note `express.json()` has a 100 kb default, so a 3,000-id bulk body will 413; raise it for `/api/entries/bulk` or send the filter instead of ids.
+- [ ] **[L]** Keep a snapshot link: store a `web.archive.org/web/<url>` URL (or submit to Save Page Now on demand) next to dead-link results so a vanished design is still viewable.
+- [ ] **[L]** Quick-add field in the top bar: paste a URL anywhere in Browse and press Enter to create the entry (auto-fill and dedupe already exist), then edit later. Today every capture goes through the full Add form (`n`).
+- [ ] **[L]** `POST /api/entries/:id/screenshot` runs multer and `sharp` before checking the entry exists (`:424-427`), so uploading to a deleted entry still spends the CPU. Check `entry` first (a small middleware before `upload.single`).
+- [ ] **[L]** Tests for the paths added since the first review: `normalizeUrl`/`pageInfo` as exported pure functions (the second is currently reachable only through a live HTTP server), `backupDaily` rotation (keeps 7), the corrupt-`library.json` set-aside branch in `loadDB`, the `Host`/`Origin` guard with a spoofed `Host: localhost.evil.com`, and zip export when a referenced file is missing.
+- [ ] **[L]** CI only runs on Node 22. Add 20 (current LTS floor for `node --test` and `fetch` with `AbortSignal.timeout`) and `npm audit --omit=dev` as a non-blocking step; `sharp` has native binaries, so a Linux + macOS matrix catches install failures early.
+- [ ] **[L]** `npm start` has no friendly failure for a busy port: `app.listen` raises `EADDRINUSE` as an uncaught exception, which now exits with a stack trace. Catch the `error` event on the server and print "Port 3737 is in use; set PORT=...".
+- [ ] **[L]** Provide `npm run dev` (`node --watch server.js`) and a small `omniview.service` user unit in `docs/` so the library is always available at `localhost:3737` without a terminal.
+- [ ] **[L]** Sidebar doesn't auto-collapse on mobile. Only one breakpoint (860px) hides table columns; the 220px sidebar still eats a phone screen. Auto-collapse below ~700px.
+- [ ] **[L]** Command palette (Cmd/Ctrl+K) to jump to an entry by title/URL. Only worth it once the library is large.
 
-# Completed
+## Done
 
-## Security / data safety
+- [x] **[M]** Fashion space (second library with a sidebar toggle, `price` and `brand` fields). Built; see `docs/FASHION_SPACE.md`.
 - [x] **[H]** Cross-site wipe: `POST /api/reset` needs no body and no confirmation (`server.js:461`). A simple cross-origin `fetch('http://localhost:3737/api/reset', {method:'POST'})` from any website you visit is a CORS "simple request", so it executes. Fix: require a custom header (e.g. `X-Omniview: 1`, forces preflight) on all non-GET routes, plus an `Origin`/`Host` allowlist middleware (`localhost:PORT` only; also blocks DNS rebinding). *Done: Host/Origin allowlist, `X-Omniview` header on all non-GET requests, and `/api/reset` now also needs `{"confirm":"reset"}`.*
 - [x] **[M]** No type validation on write. `POST/PUT /api/entries` copies `style_tags`, `boards`, `favorite` etc. as-is (`server.js:154,192`). Sending `style_tags: "x"` makes later `.includes`/`.some`/`.filter` calls misbehave or throw 500. Validate: arrays of strings, boolean `favorite`, string lengths, `type`/`found_via` in the managed lists (or auto-create).
 - [x] **[M]** `bulk` crashes on old entries missing `style_tags`/`boards` (`server.js:249,254`: `.includes` on undefined). Default with `(e.style_tags ||= [])`, or normalise every entry in `loadDB()`.
@@ -23,8 +67,6 @@ Reviewed 2026-10-08. Former `UI_UX_IDEAS.md` / `TECHNICAL_IDEAS.md` are merged i
 - [x] **[L]** Bulk `tag` action can add tags that don't exist in `db.tags` (`server.js:248`), and entry create/update accepts unknown tags. Either reject or auto-register to keep filters consistent.
 - [x] **[L]** `process.on('uncaughtException')` swallows fatal errors and keeps running in an unknown state (`server.js:501`). Log, then exit; let `nodemon`/systemd restart.
 - [x] **[L]** `decodeURIComponent` on route params can throw on malformed `%` sequences (`server.js:335`+). Express already decodes `req.params`; double-decode also breaks names that contain `%`. Remove the extra call.
-
-## Performance / efficiency
 - [x] **[H]** Full-size PNGs are served in the grid. 33 MB for 27 shots, up to 4.4 MB each, uploads allow 50 MB (`server.js:84`). Generate a ~600 px WebP thumbnail on upload (`sharp`, or `<canvas>` resize in the browser before upload) and use it in cards/list; load the original only in the detail modal.
 - [x] **[M]** Cache headers: `/uploads` filenames are UUIDs, so they are immutable. `express.static(UPLOADS_DIR, { maxAge: '365d', immutable: true })`. Also add `compression()` for JSON/JS/CSS (or at least pre-minify; `app.js` is 2,026 lines unminified).
 - [x] **[M]** `writeDB` is synchronous and rewrites the whole pretty-printed JSON plus a `.bak` copy on every mutation, including favorite toggles (`server.js:57-68`). Fine at 27 entries, painful at thousands. Debounce writes (~200 ms) and use async `fs.promises`; drop `null, 2` indent in the main file.
@@ -33,8 +75,6 @@ Reviewed 2026-10-08. Former `UI_UX_IDEAS.md` / `TECHNICAL_IDEAS.md` are merged i
 - [x] **[L]** Filtering and sorting are done on the server, but the client also keeps `state.entries` and re-filters (`applyFilters`, `app.js:672`). Pick one place. Server-side filtering plus client-side re-filter is duplicate logic that can drift (e.g. search checks the same four fields in two places). *Done: filtering now lives only in the browser (`applyFilters`); the unused server-side filter on `GET /api/entries` was removed.*
 - [x] **[L]** Client does full `innerHTML = ''` + rebuild of the grid on every filter keystroke (`renderGrid`, `app.js:741`). Debounce the search input (150 ms) and consider virtualised rendering past ~500 cards. *Done: search is debounced (150 ms). Virtualised rendering is not added; not needed until ~500 cards.*
 - [x] **[L]** Orphaned uploads: if a screenshot upload succeeds but the entry write fails, or an entry is edited elsewhere, files stay in `uploads/` forever. Add a startup (or Settings button) "Clean unused files" that deletes files not referenced by any entry.
-
-## UI / UX
 - [x] **[H]** Auto-fill from URL: on pasting a URL, fetch the page server-side (Node `fetch`) and pre-fill title, `og:image`/favicon, and `theme-color`. Removes most manual typing and fixes the favicon idea in the UI backlog without an external service.
 - [x] **[H]** Duplicate URL handling: the server returns `isDuplicate` but still creates the entry (`server.js:157-177`). Normalise URLs (strip trailing slash, `www.`, tracking params, http vs https) and show "Already saved: open it / add anyway" in the form.
 - [x] **[M]** Image zoom/lightbox in the detail modal; arrow-key prev/next through the current filtered list without closing the modal.
@@ -48,12 +88,8 @@ Reviewed 2026-10-08. Former `UI_UX_IDEAS.md` / `TECHNICAL_IDEAS.md` are merged i
 - [x] **[L]** Drag cards between boards in the Boards view.
 - [x] **[L]** Show total/filtered counts ("12 of 27") near the search bar.
 - [x] **[L]** Respect `prefers-reduced-motion` for the sidebar and toast animations; check `styles.css` for transitions without the query.
-
-## New features
 - [x] **[M]** Multiple screenshots per entry (hero + inner pages, mobile + desktop) with a small carousel. Needs `screenshots: []` in the schema and a one-time migration of `screenshot`.
 - [x] **[L]** Random entry / "inspire me" button; "recently viewed".
-
-## Remove / clean up
 - [x] **[M]** Delete the loose `Screenshot 2026-10-01 ... Omniview.png` from the repo root (use it in README or move to `docs/`); README still says "[image coming soon]" 3 times.
 - [x] **[M]** `package.json` pins `express ^4`; Express 5 is current and async handlers get error forwarding for free. Low-risk upgrade given the test suite exists.
 - [x] **[L]** README project structure omits `test/`, `uploads/`, and the export/import API. Document the endpoints and the `OMNIVIEW_DB_PATH` / `OMNIVIEW_UPLOADS_DIR` env vars.
@@ -62,72 +98,11 @@ Reviewed 2026-10-08. Former `UI_UX_IDEAS.md` / `TECHNICAL_IDEAS.md` are merged i
 - [x] **[L]** `/api/stats` and `refreshStats` could be derived from the already-loaded `state.entries`; one fewer request per mutation. *Done: counters derive from `state`; the endpoint was removed.*
 - [x] **[L]** Test gaps: no tests for export, reset, board delete cascade, tag delete cascade, or concurrency. Add 4-5 more cases in `test/api.test.js`; CI via a one-line GitHub Action (`npm test`).
 
----
-
-## Round 2 (reviewed 2026-10-13, after the ES-module split, sharp thumbnails and Express 5 move)
-
-Still open from the first list: import/restore, static board export, extension/bookmarklet, structured fields, saved searches, SQLite. Also still open: the three UI/UX items at the bottom. Items below are new.
-
-### Bugs and robustness (checked against the code)
-- [ ] **[M]** A failed ZIP export can kill the server. `GET /api/export?format=zip` pipes an `archiver` stream with no `error` handler (`server.js:812-820`). The server now deliberately `process.exit(1)`s on any uncaught exception (`:899`), and an unhandled `error` event on an EventEmitter is one: a file vanishing between `existsSync` and the read, or the client aborting mid-download, takes the whole app down. Add `archive.on('error', ...)` (log + `res.destroy()`), `archive.on('warning', ...)`, and `res.on('close', () => archive.abort())`.
-- [ ] **[M]** Deleted screenshots are unrecoverable, so restoring a daily backup gives broken images. `backupDaily` copies only `library.json` (`:99-108`), but `DELETE /api/entries/:id` and "Clear screenshot" `rmSync` the image and thumbnail immediately (`removeFiles`, `:150`). Restore yesterday's backup after a bad bulk delete and the entries come back pointing at missing files. Move deleted files to `uploads/.trash/` and purge after 7 days (same cadence as the JSON backups), or include `uploads/` in the backup rotation.
-- [ ] **[M]** The first paint uses the wrong theme. `setupTheme()` runs after `await loadAll()` (`main.js:24-33`), and `index.html` hard-codes `data-theme="dark"`, so a light-theme user sees a dark flash on every load, and the sidebar-collapsed state also applies late (layout jump). Put a 3-line inline script in `<head>` that sets `data-theme` and the collapsed class from `localStorage` before first paint, and default to `prefers-color-scheme` when nothing is stored.
-- [ ] **[M]** Loading the library has no failure state. If `/api/entries` fails (server restarting, port clash), `loadAll()` throws inside `init()` before any `setup*()` call, so the page stays on the spinner with no handlers attached and the `unhandledrejection` toast is the only signal. Catch in `init`, show "Can't reach Omniview. Retry" in the grid area, and keep the rest of the UI inert until it succeeds.
-- [ ] **[M]** Entry cards are not keyboard-reachable. `createCard` builds a `div` with a click handler only (`browse.js:382,447`), and there is no `tabindex`/`role`/`keydown` anywhere in `browse.js`, so Tab skips the whole library and Enter can't open an entry (the list rows have the same problem, `createRow`). Make the card a `<button>`-like element: `tabindex="0"`, `role="button"`, Enter/Space opens, and `aria-label` with the title. Selected state in bulk mode should expose `aria-selected`/`aria-pressed`.
-- [ ] **[M]** "Mobile" cards rely on a magic string. `isMobile = entry.type === 'Mobile App'` (`browse.js:387`), but the default types are `Website` and `Web App` (`server.js:38`), so unless you happened to create exactly "Mobile App", tall phone screenshots are cropped like desktop ones. Store `width`/`height` for every screenshot when `sharp` processes it (`processImage` already opens the file), derive "tall" from aspect ratio, and put `width`/`height` on the `<img>` so masonry stops shifting while images load.
-- [ ] **[L]** Editing an entry's URL can create a duplicate. Only `POST` runs `findDuplicate` (`server.js:377`); `PUT /api/entries/:id` accepts any `url` (`:411`), and the 409 flow only exists for creation. Run the same check on `PUT` when `url` changes (excluding self) and return the same `409` + `duplicate` payload unless `force`.
-- [ ] **[L]** Auto-fill breaks on non-UTF-8 pages. `/api/unfurl` always does `buffer.toString('utf8')` (`server.js:584`), so a Shift-JIS or windows-1252 page yields mojibake titles. Read the charset from `Content-Type` or `<meta charset>` and decode with `new TextDecoder(charset)`.
-- [ ] **[L]** The auto-filled "screenshot" is usually the site's `og:image`, i.e. a marketing card rather than the actual UI (`entry.js:143-146`). Label it in the form ("Social preview image, not a screenshot") and keep the "needs real screenshot" state visible on the card (small badge), so the library doesn't silently fill up with logos.
-- [ ] **[L]** Sorting parses `new Date(date_added)` inside the comparator on every render (`browse.js:211-218`, `server.js:357`). Store a numeric `added_at` once (normalise in `normalizeEntry`) and compare numbers; it also gives you a stable tiebreak for imports.
-- [ ] **[L]** The entry has no `updated_at` or `last_viewed`. "Recent" is a per-browser `localStorage` list (`readRecent`), so it disappears with the browser profile and can't be sorted server-side. Add `updated_at` on every write (needed for any merge-on-import conflict anyway) and `last_viewed` on open.
-- [ ] **[L]** `GET /api/entries` returns the whole library, notes included, on every page load, and any mutation that calls `loadAll()` re-downloads it. Fine at 27 entries; at ~1,000 it is megabytes of JSON. Trim the list payload to card fields with notes loaded by `GET /api/entries/:id`.
-
-### Security / privacy
-- [ ] **[M]** Fonts load from Google on every page view (`index.html:7-8`: Inter + Fraunces), which contradicts "Local only, no cloud". Download the woff2 files into `public/fonts/`, add `@font-face`, and remove the `preconnect`. Bonus: the UI then renders offline, and the first paint no longer waits on a third party.
-- [ ] **[M]** Add response headers as a backstop for the innerHTML-heavy renderer (30 `innerHTML` sites): `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and `Content-Security-Policy: default-src 'self'; img-src 'self' data: https:; script-src 'self'; style-src 'self' 'unsafe-inline'` (favicons and unfurled images load from arbitrary https hosts, hence `img-src https:`). With self-hosted fonts the policy needs no external hosts besides images. `/uploads` should also send `nosniff`.
-- [ ] **[L]** `/api/unfurl` and `/api/entries/:id/screenshot-url` will fetch any URL the user types, including `localhost` and LAN addresses, and follow redirects there. That is intentional for saving your own dev sites, so don't block it, but document it in the README ("never expose this port") and cap redirects (`redirect: 'manual'` with a limit of 5) so a public page can't bounce the server onto an internal URL that was never typed.
-
-### Browse / search
-- [ ] **[M]** Search only does one contiguous substring across title, URL, note and tags (`browse.js:243-248`). `dark dashboard` finds nothing if "dark" is a tag and "dashboard" is in the title; it also ignores `type`, `found_via`, board names and color names. Split the query on whitespace, require every token to match any field, and include the missing fields.
-- [ ] **[M]** Query operators: `tag:minimal`, `type:"web app"`, `board:client`, `is:fav`, `-tag:corporate`, `has:screenshot`. All the data is already in memory; a 25-line parser replaces opening three dropdowns, and it makes saved searches (open item) trivial since a saved search is just a string.
-- [ ] **[M]** Browse routing: the app is a set of show/hide views with no URL state (`doNavigate`, `main.js:119`), so the Back button leaves the app, a refresh drops you out of a board or open entry, and nothing can be bookmarked. Use `location.hash` (`#/boards/<id>`, `#/entry/<id>`, `#/add`), open/close the detail modal with `pushState`, and restore on `popstate`.
-- [ ] **[M]** Compare view: select 2-4 entries in bulk mode and open them side by side (same height, synced zoom, palettes underneath). Choosing between two references is the main reason to look at a design library, and everything needed (selection, lightbox, palette) already exists.
-- [ ] **[L]** Sort by color: order by hue of the first palette color (and by lightness within a hue) so the grid becomes a gradient. `colorName` already parses the hex; the sort key is one more function. Also add "Recently viewed" and "Recently edited" to the sort menu once `last_viewed`/`updated_at` exist.
-- [ ] **[L]** Render in chunks. `renderGrid` clears and rebuilds every card on each filter or sort change (`:332-335`). Render the first ~60 and append the next page with an `IntersectionObserver` sentinel; images already use `loading="lazy"`, so the DOM node count is what dominates at 1,000+ entries.
-- [ ] **[L]** Show why an entry matched: highlight the matched term in the title and show the matching note excerpt under the card in list layout when the query hit the note.
-- [ ] **[L]** "Select all matching" in bulk mode (plus "N of M selected" beside it). Today you can only click or shift-range, so re-tagging a filtered set of 200 entries is slow. Note `express.json()` has a 100 kb default, so a 3,000-id bulk body will 413; raise it for `/api/entries/bulk` or send the filter instead of ids.
-
-### Capture / entry
-- [ ] **[H]** Real screenshots without a browser extension: if `chromium`/`google-chrome` is installed, run `chromium --headless --screenshot=<file> --window-size=1440,900 --hide-scrollbars <url>` from a new `POST /api/entries/:id/capture` (child process, timeout 20 s) and pass the file to `attachScreenshot`. No npm dependency, and it replaces the `og:image` stand-in as the default. Offer a mobile variant (`--window-size=390,844 --user-agent=...`).
-- [ ] **[M]** Reorder screenshots and choose the cover. The first image is always the cover (`entry.screenshot = entry.screenshots[0]`, `:205`), and the only way to change it is to delete and re-add images, which also re-derives the palette from scratch. Add `PUT /api/entries/:id/screenshots` with an ordered list of filenames (validated against the entry), recompute `palette` when index 0 changes, and a "Set as cover" button in the detail carousel.
-- [ ] **[M]** Dead-link check: a Settings action (and per-entry badge) that HEADs each saved URL with a short timeout and flags 404/DNS failures. Inspiration libraries rot; knowing which references no longer exist is more useful than a prettier grid. Store `last_checked`/`status` on the entry, run it sequentially with a delay so you aren't hammering sites.
-- [ ] **[L]** Keep a snapshot link: store a `web.archive.org/web/<url>` URL (or submit to Save Page Now on demand) next to dead-link results so a vanished design is still viewable.
-- [ ] **[L]** Quick-add field in the top bar: paste a URL anywhere in Browse and press Enter to create the entry (auto-fill and dedupe already exist), then edit later. Today every capture goes through the full Add form (`n`).
-- [ ] **[L]** `POST /api/entries/:id/screenshot` runs multer and `sharp` before checking the entry exists (`:424-427`), so uploading to a deleted entry still spends the CPU. Check `entry` first (a small middleware before `upload.single`).
-
-### Data / ops
-- [ ] **[M]** Make the stored shape versioned: add `"version": 2` to `library.json` and run numbered migrations in `loadDB` instead of the ad-hoc back-fills in `normalizeEntry` (`:50-60`, `:76-77`). It is what the import endpoint will need to accept old exports safely.
-- [ ] **[L]** Tests for the paths added since the first review: `normalizeUrl`/`pageInfo` as exported pure functions (the second is currently reachable only through a live HTTP server), `backupDaily` rotation (keeps 7), the corrupt-`library.json` set-aside branch in `loadDB`, the `Host`/`Origin` guard with a spoofed `Host: localhost.evil.com`, and zip export when a referenced file is missing.
-- [ ] **[L]** CI only runs on Node 22. Add 20 (current LTS floor for `node --test` and `fetch` with `AbortSignal.timeout`) and `npm audit --omit=dev` as a non-blocking step; `sharp` has native binaries, so a Linux + macOS matrix catches install failures early.
-- [ ] **[L]** `npm start` has no friendly failure for a busy port: `app.listen` raises `EADDRINUSE` as an uncaught exception, which now exits with a stack trace. Catch the `error` event on the server and print "Port 3737 is in use; set PORT=...".
-- [ ] **[L]** Provide `npm run dev` (`node --watch server.js`) and a small `omniview.service` user unit in `docs/` so the library is always available at `localhost:3737` without a terminal.
-
----
-
-## Merged from UI_UX_IDEAS.md and TECHNICAL_IDEAS.md
-
-### Open (UI/UX)
-- [ ] **[M]** Save buttons don't disable during the async request (`entry-form` submit, `detail-save`). A double-click or slow upload can create duplicate entries. Disable the button and restore it in a `finally`.
-- [ ] **[L]** Sidebar doesn't auto-collapse on mobile. Only one breakpoint (860px) hides table columns; the 220px sidebar still eats a phone screen. Auto-collapse below ~700px.
-- [ ] **[L]** Command palette (Cmd/Ctrl+K) to jump to an entry by title/URL. Only worth it once the library is large.
-
-### Done (UI/UX)
+### Also done (earlier UI/UX and technical notes)
 - Favicons on entries (via `/api/unfurl`), styled prompt modal replacing `prompt()`, search placeholder/title matching, detail modal stacks below 700px.
 - "Remove from board" on board cards, keyboard nav in dropdowns, shift-click range select in bulk mode, board thumbnail collage.
 - Toast component with a 5-second Undo on delete (single and bulk), modal `role="dialog"` + focus trap + nesting-aware Escape.
 - Filters persist across reload, collapsible sidebar, keyboard shortcuts + Shortcuts tab, sort control, quick "open site" on cards, initial loading spinner, unsaved-changes warning on the form.
-
-### Done (technical)
 - Screenshot clear during edit (`removeScreenshot: true`), atomic `writeDB()` (tmp + rename), in-memory DB (no write races), upload mimetype allowlist (closes SVG XSS).
 - `npm test` via `node --test`, backups before destructive writes, whitespace/duplicate name validation on create and rename.
 - Global error handler, crash safety net, request + write logging.

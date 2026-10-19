@@ -563,3 +563,146 @@ test('editing an entry sets updated_at; favoriting does not', async () => {
   assert.ok((await call('PUT', `/api/entries/${e.id}`, { note: 'x' })).body.updated_at);
   await call('DELETE', `/api/entries/${e.id}`);
 });
+
+// ─── Trash ───────────────────────────────────────────────────────────────────
+test('deleting moves an entry to the trash; restore and purge work', async () => {
+  const e = await create('https://trash.example', { title: 'Trashy', style_tags: ['TrashTag'] });
+  const shot = (await upload(e.id)).body.screenshot;
+
+  await call('DELETE', `/api/entries/${e.id}`);
+  assert.equal((await call('GET', `/api/entries/${e.id}`)).status, 404);
+  assert.ok(fs.existsSync(path.join(UPLOADS, shot)), 'files stay while the entry is in the trash');
+  let trash = (await call('GET', '/api/trash')).body;
+  assert.equal(trash.find(t => t.id === e.id).days_left, 30);
+
+  await call('DELETE', '/api/tags/TrashTag');
+  const restored = await call('POST', `/api/trash/${e.id}/restore`);
+  assert.equal(restored.status, 200);
+  assert.equal(restored.body.deleted_at, undefined);
+  assert.ok((await call('GET', '/api/tags')).body.includes('TrashTag'), 'tags it used are registered again');
+  assert.equal((await call('POST', `/api/trash/${e.id}/restore`)).status, 404);
+
+  // Past 30 days it is purged, files included.
+  await call('DELETE', `/api/entries/${e.id}`);
+  const realNow = Date.now;
+  Date.now = () => realNow() + 31 * 864e5;
+  try { trash = (await call('GET', '/api/trash')).body; } finally { Date.now = realNow; }
+  assert.equal(trash.some(t => t.id === e.id), false);
+  assert.equal(fs.existsSync(path.join(UPLOADS, shot)), false);
+});
+
+test('trash: delete forever and empty; bulk delete lands there too', async () => {
+  const a = await create('https://trash-a.example');
+  const b = await create('https://trash-b.example');
+  await call('POST', '/api/entries/bulk', { ids: [a.id, b.id], action: 'delete' });
+  assert.equal((await call('GET', '/api/trash')).body.filter(t => [a.id, b.id].includes(t.id)).length, 2);
+  assert.equal((await call('DELETE', `/api/trash/${a.id}`)).status, 200);
+  assert.equal((await call('DELETE', `/api/trash/${a.id}`)).status, 404);
+  assert.equal((await call('GET', '/api/export')).body.trash, undefined, 'export leaves the trash out');
+  await call('DELETE', '/api/trash');
+  assert.equal((await call('GET', '/api/trash')).body.length, 0);
+});
+
+// ─── Save failures ───────────────────────────────────────────────────────────
+test('a failed write is reported on every answer until a write succeeds', async () => {
+  const blocker = `${process.env.OMNIVIEW_DB_PATH}.tmp`;
+  fs.mkdirSync(blocker); // writeFile onto a directory fails with EISDIR
+  try {
+    await create('https://save-fail.example');
+    await app.flushDB();
+    const res = await fetch(`${base}/api/health`);
+    assert.match(res.headers.get('x-save-error'), /library\.json: EISDIR/);
+    assert.match((await res.json()).saveError, /EISDIR/);
+  } finally {
+    fs.rmdirSync(blocker);
+  }
+  await app.flushDB(); // dirty from the failed attempt, now succeeds
+  const ok = await fetch(`${base}/api/health`);
+  assert.equal(ok.headers.get('x-save-error'), null);
+  assert.equal((await ok.json()).saveError, null);
+});
+
+// ─── Single-server lock ──────────────────────────────────────────────────────
+test('the lock refuses a live owner and replaces a stale one', () => {
+  const lock = path.join(tmpDir, 'test.lock');
+  app.acquireLock(lock);
+  assert.equal(fs.readFileSync(lock, 'utf8'), String(process.pid));
+  app.acquireLock(lock); // our own PID is a leftover from this process, not a rival
+  fs.writeFileSync(lock, String(process.ppid)); // the test runner's parent is alive
+  assert.throws(() => app.acquireLock(lock), /already using/);
+  fs.writeFileSync(lock, '99999999'); // no such process
+  app.acquireLock(lock);
+  assert.equal(fs.readFileSync(lock, 'utf8'), String(process.pid));
+  fs.rmSync(lock);
+});
+
+// ─── Library validation ──────────────────────────────────────────────────────
+test('libraryProblems names missing ids, duplicates and dangling boards', () => {
+  const problems = app.libraryProblems({
+    entries: [{ id: 'a', title: 'A', boards: ['b1', 'gone'] }, { id: 'a', title: 'A2', boards: [] }, { title: 'No id', boards: [] }],
+    trash: [],
+    boards: [{ id: 'b1', name: 'One' }]
+  });
+  assert.deepEqual(problems.map(p => p.replace(/\s*\(.*?\)/, '')), [
+    'duplicate entry id a',
+    'entry #3 has no id',
+    'entry a is on missing board gone'
+  ]);
+});
+
+// ─── Storage + duplicate images ──────────────────────────────────────────────
+test('storage reports counts and sizes', async () => {
+  await upload((await create('https://storage.example')).id);
+  const s = (await call('GET', '/api/storage')).body;
+  assert.equal(s.dataDir, tmpDir);
+  assert.ok(s.spaces.ui.entries >= 0 && s.spaces.fashion.entries >= 0);
+  assert.ok(s.uploads.files > 0 && s.uploads.bytes > 0);
+  assert.ok(s.thumbs.files > 0);
+});
+
+test('uploading an identical image reports which entry already has it', async () => {
+  const png = await require('sharp')({ create: { width: 3, height: 3, channels: 3, background: { r: 12, g: 99, b: 200 } } }).png().toBuffer();
+  const a = await create('https://dup-img-a.example', { title: 'First' });
+  const b = await create('https://dup-img-b.example');
+  assert.equal((await upload(a.id, 'image/png', png)).body.duplicateOf, null);
+  const again = await upload(b.id, 'image/png', png);
+  assert.equal(again.status, 200);
+  assert.equal(again.body.screenshots.length, 1, 'the duplicate is still attached');
+  assert.deepEqual(again.body.duplicateOf, { id: a.id, title: 'First', space: 'ui', trashed: false });
+});
+
+// ─── Request caps, log redaction, EXIF ───────────────────────────────────────
+test('bulk caps the id count; other routes cap the body at 100 kb', async () => {
+  const many = Array.from({ length: 5001 }, (_, i) => `id-${i}`);
+  const res = await call('POST', '/api/entries/bulk', { ids: many, action: 'delete' });
+  assert.equal(res.status, 400);
+  assert.match(res.body.error, /At most 5000/);
+  assert.equal((await call('POST', '/api/entries/bulk', { ids: many.slice(0, 5000), action: 'favorite' })).status, 200);
+  assert.equal((await call('POST', '/api/entries', { url: 'https://big.example', note: 'x'.repeat(150 * 1024) })).status, 413);
+});
+
+test('the request log leaves the query off fetch routes', async () => {
+  const lines = [];
+  const orig = console.log;
+  console.log = (...a) => lines.push(a.join(' '));
+  try {
+    await call('GET', '/api/unfurl?url=ftp://shop.example/?token=SECRET123'); // 400, so it is logged
+    await new Promise(r => setTimeout(r, 20));
+  } finally { console.log = orig; }
+  const line = lines.find(l => l.includes('/api/unfurl'));
+  assert.ok(line, 'request was logged');
+  assert.ok(!line.includes('SECRET123') && !line.includes('?'));
+});
+
+test('uploads lose EXIF (GPS) but keep their orientation', async () => {
+  const sharp = require('sharp');
+  const jpg = await sharp({ create: { width: 40, height: 20, channels: 3, background: '#369' } })
+    .withExif({ IFD0: { Copyright: 'me' }, IFD3: { GPSLatitudeRef: 'N', GPSLatitude: '51/1 30/1 0/1' } }).jpeg().toBuffer();
+  assert.ok((await sharp(jpg).metadata()).exif, 'fixture has EXIF');
+  const entry = await create('https://exif.example');
+  const { status, body } = await upload(entry.id, 'image/jpeg', jpg);
+  assert.equal(status, 200);
+  const stored = await sharp(path.join(UPLOADS, body.screenshot)).metadata();
+  assert.equal(stored.exif, undefined);
+  assert.equal(stored.width, 40);
+});

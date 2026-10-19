@@ -43,6 +43,9 @@ async function init() {
   setupImageInput();
   renderBrowse();
 
+  // A failed save happens after the request that caused it has been answered; this ping surfaces it.
+  setInterval(() => api.get('/api/health').catch(() => {}), 10000);
+
   window.addEventListener('beforeunload', e => {
     if (isFormDirty()) { e.preventDefault(); e.returnValue = ''; }
   });

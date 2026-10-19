@@ -5,3 +5,4 @@ db/*.bak
 db/*.tmp
 db/backups/
 uploads/thumbs/
+db/.lock

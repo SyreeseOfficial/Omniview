@@ -3,7 +3,7 @@
 
 import {
   state, SPACES, COLORS, PLACEHOLDER_SVG, OPEN_ICON, COPY_ICON, BOARD_ICON, byName, cleanUrl, titleOf, safeHref, thumbImg, faviconImg,
-  colorName, defaultFilters, brandPrice, spaceKey, priceOf, priceTotal, boardLabel
+  colorName, defaultFilters, brandPrice, spaceKey, priceOf, priceTotal, boardLabel, escHtml
 } from './state.js';
 import { api } from './api.js';
 import { inAddedRange } from './lib.js';
@@ -276,7 +276,7 @@ function renderTagFilters() {
     label.appendChild(countSpan(counts.get(tag) || 0));
     wrap.appendChild(label);
   });
-  if (shown.length === 0) wrap.innerHTML = `<div class="filter-check-empty">${state.tags.length === 0 ? 'No tags yet.' : 'No matching tags.'}</div>`;
+  if (shown.length === 0) wrap.innerHTML = `<div class="filter-check-empty">${escHtml(state.tags.length === 0 ? 'No tags yet.' : 'No matching tags.')}</div>`;
 
   const n = state.filters.tags.length;
   const count = $('filter-tags-count');

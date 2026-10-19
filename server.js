@@ -6,6 +6,7 @@ const multer = require('multer');
 const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { AsyncLocalStorage } = require('async_hooks');
 const archiver = require('archiver');
 const { v4: uuidv4 } = require('uuid');
@@ -20,6 +21,7 @@ const UPLOADS_DIR = process.env.OMNIVIEW_UPLOADS_DIR || path.join(__dirname, 'up
 const THUMBS_DIR = path.join(UPLOADS_DIR, 'thumbs');
 const FASHION_DB_PATH = path.join(path.dirname(DB_PATH), 'fashion.json');
 const BACKUP_DIR = path.join(path.dirname(DB_PATH), 'backups');
+const LOCK_PATH = path.join(path.dirname(DB_PATH), '.lock');
 
 // Ensure dirs exist
 [path.dirname(DB_PATH), UPLOADS_DIR, THUMBS_DIR].forEach(d => fs.mkdirSync(d, { recursive: true }));
@@ -29,6 +31,7 @@ const httpError = (status, message) => Object.assign(new Error(message), { statu
 // ─── JSON "Database" ─────────────────────────────────────────────────────────
 const DEFAULT_DB = {
   entries: [],
+  trash: [], // deleted entries, kept TRASH_DAYS before the purge
   boards: [],
   tags: [
     'Minimal', 'Brutalist', 'Dark Mode', 'Light Mode', 'Glassmorphism',
@@ -43,6 +46,7 @@ const DEFAULT_DB = {
 
 const FASHION_DB = {
   entries: [],
+  trash: [],
   boards: [],
   tags: [],
   types: ['Jacket', 'Shirt', 'Knitwear', 'Pants', 'Shoes', 'Hat', 'Bag', 'Accessory'],
@@ -83,10 +87,32 @@ function normalizeEntry(e, space) {
   }
 }
 
+// Specific problems in a loaded library, as readable lines. Only reported, never
+// fixed: a hand-edited or half-restored file is better flagged than silently rewritten.
+function libraryProblems(data) {
+  const problems = [];
+  for (const [kind, list] of [['entry', data.entries], ['trashed entry', data.trash], ['board', data.boards]]) {
+    const seen = new Set();
+    list.forEach((x, i) => {
+      const label = x.title || x.name || x.url || '';
+      if (typeof x.id !== 'string' || !x.id) problems.push(`${kind} #${i + 1} ("${label}") has no id`);
+      else if (seen.has(x.id)) problems.push(`duplicate ${kind} id ${x.id} ("${label}")`);
+      else seen.add(x.id);
+    });
+  }
+  const boardIds = new Set(data.boards.map(b => b.id));
+  for (const e of [...data.entries, ...data.trash]) {
+    for (const b of e.boards) if (!boardIds.has(b)) problems.push(`entry ${e.id} ("${e.title || e.url}") is on missing board ${b}`);
+  }
+  return problems;
+}
+
 function loadDB(space) {
   const lib = SPACES[space];
   try {
     lib.data = JSON.parse(fs.readFileSync(lib.file, 'utf8'));
+    const isList = l => Array.isArray(l) && l.every(x => x && typeof x === 'object');
+    if (!isList(lib.data.entries) || !isList(lib.data.boards) || !isList(lib.data.trash ?? [])) throw new Error('entries, boards and trash must be lists of objects');
   } catch (err) {
     // A missing file is a first run. A file that exists but won't parse is kept
     // aside instead of being silently overwritten by the next save.
@@ -100,11 +126,16 @@ function loadDB(space) {
   // Back-fill fields added after this file was first written
   if (!lib.data.types) lib.data.types = [...lib.defaults.types];
   if (!lib.data.foundVia) lib.data.foundVia = [...lib.defaults.foundVia];
+  lib.data.trash ??= [];
   lib.data.entries.forEach(e => normalizeEntry(e, space));
+  lib.data.trash.forEach(e => normalizeEntry(e, space));
   lib.data.boards.forEach(b => {
     b.description ??= ''; b.emoji ??= ''; b.color ??= ''; b.pinned = !!b.pinned;
     if (!Array.isArray(b.order)) b.order = [];
   });
+  const problems = libraryProblems(lib.data);
+  problems.slice(0, 20).forEach(p => console.warn(`${path.basename(lib.file)}: ${p}`));
+  if (problems.length > 20) console.warn(`${path.basename(lib.file)}: ...and ${problems.length - 20} more problems`);
 }
 
 function readDB() {
@@ -116,6 +147,8 @@ function readDB() {
 // saves every space that changed.
 let saveTimer = null;
 let saving = Promise.resolve();
+// Message of a space's failed write (lib.saveError), cleared by its next good write.
+const saveError = () => Object.values(SPACES).find(l => l.saveError)?.saveError || null;
 
 function writeDB(data) {
   const lib = SPACES[currentSpace()];
@@ -153,10 +186,15 @@ function flushDB() {
       const tmpPath = `${lib.file}.tmp`;
       await fs.promises.writeFile(tmpPath, JSON.stringify(data));
       await fs.promises.rename(tmpPath, lib.file);
+      lib.saveError = null;
       console.log(`[${new Date().toISOString()}] ${name} written (${data.entries.length} entries, ${data.boards.length} boards)`);
     }).catch(err => {
       lib.dirty = true;
+      lib.saveError = `${name}: ${err.code || err.message}`;
       console.error(`Failed to write ${name}:`, err);
+      // The user may free some space; try again rather than wait for the next edit.
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(flushDB, 10000);
     });
   }
   return saving;
@@ -216,6 +254,41 @@ async function processImage(file) {
   return extractPalette(src);
 }
 
+// Camera photos carry GPS in EXIF, and originals are stored and exported as uploaded.
+// Re-encode only files that have EXIF (screenshots don't), applying the orientation first.
+async function stripExif(file) {
+  const src = path.join(UPLOADS_DIR, file);
+  const img = sharp(src);
+  const { exif, format } = await img.metadata();
+  if (!exif) return;
+  // sharp drops metadata by default; q95 keeps a JPEG/WebP/AVIF re-encode visually identical.
+  fs.writeFileSync(src, await img.rotate().toFormat(format, { quality: 95 }).toBuffer());
+}
+
+// Byte-identical duplicate detection. Hashes are remembered per file name (the first
+// upload after a restart hashes every screenshot once); /api/optimize rewrites files
+// and clears them. A re-saved or re-encoded copy of the same picture won't match.
+const fileHashes = new Map();
+const fileHash = file => {
+  if (!fileHashes.has(file)) {
+    fileHashes.set(file, fs.promises.readFile(path.join(UPLOADS_DIR, file)).then(buf => crypto.createHash('sha256').update(buf).digest('hex'), () => null));
+  }
+  return fileHashes.get(file);
+};
+
+// The entry (in either library, trash included) that already has this image, if any.
+async function findDuplicateImage(file) {
+  const hash = await fileHash(file);
+  for (const [space, lib] of Object.entries(SPACES)) {
+    for (const e of [...lib.data.entries, ...lib.data.trash]) {
+      for (const f of e.screenshots) {
+        if (f !== file && (await fileHash(f)) === hash) return { id: e.id, title: e.title || e.url, space, trashed: !!e.deleted_at };
+      }
+    }
+  }
+  return null;
+}
+
 // Files multer/URL-download has written but that no entry references yet; the
 // orphan cleanup must not treat them as unused.
 const attaching = new Set();
@@ -227,11 +300,13 @@ async function attachScreenshot(entryId, file, remote = false) {
   try {
     let palette;
     try {
+      await stripExif(file);
       palette = await processImage(file);
     } catch {
       removeFiles(file);
       throw httpError(400, 'Could not read that image');
     }
+    const duplicateOf = await findDuplicateImage(file);
     const entry = readDB().entries.find(e => e.id === entryId);
     if (!entry || entry.screenshots.length >= MAX_SCREENSHOTS) {
       removeFiles(file);
@@ -242,7 +317,7 @@ async function attachScreenshot(entryId, file, remote = false) {
     entry.screenshot = entry.screenshots[0];
     if (!entry.palette.length) entry.palette = palette;
     writeDB(readDB());
-    return entry;
+    return { entry, duplicateOf };
   } finally {
     attaching.delete(file);
   }
@@ -263,12 +338,15 @@ const upload = multer({
 });
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
+const REDACT_QUERY = /^\/api\/(unfurl|entries\/[^/]+\/screenshot-url)$/;
+const logUrl = req => (REDACT_QUERY.test(req.path) ? req.path : req.originalUrl);
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
     // Thumbnails and static assets would bury real errors and writes.
     if (res.statusCode < 400 && !req.originalUrl.startsWith('/api')) return;
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now() - start}ms`);
+    // Fetched shop URLs can carry session or signed-token params; keep them out of scrollback.
+    console.log(`[${new Date().toISOString()}] ${req.method} ${logUrl(req)} ${res.statusCode} ${Date.now() - start}ms`);
   });
   next();
 });
@@ -303,8 +381,20 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
+// Every API answer says whether the last write failed, so the UI can warn at once
+// instead of looking fine while changes pile up in memory.
+app.use('/api', (req, res, next) => {
+  const err = saveError();
+  if (err) res.setHeader('X-Save-Error', err.replace(/[^\x20-\x7e]/g, '?'));
+  next();
+});
+app.get('/api/health', (req, res) => res.json({ ok: true, saveError: saveError() }));
+
 app.use(compression());
-app.use(express.json());
+// 100 kb covers every route except bulk (up to MAX_BULK_IDS ids, ~40 bytes each).
+const MAX_BULK_IDS = 5000;
+app.use('/api/entries/bulk', express.json({ limit: '300kb' }));
+app.use(express.json({ limit: '100kb' }));
 app.use((req, res, next) => { req.body ??= {}; next(); }); // Express 5 leaves body undefined when none was sent
 
 // Runs the rest of the chain inside the request's space. It sits after the body
@@ -411,6 +501,64 @@ function findDuplicate(db, url, excludeId) {
   return db.entries.find(e => e.id !== excludeId && normalizeUrl(e.url) === key) || null;
 }
 
+// ─── Trash ────────────────────────────────────────────────────────────────────
+// Deleting moves an entry (and keeps its files) into db.trash, so every other
+// route simply never sees it. Restoring puts it back; after TRASH_DAYS it is purged.
+const TRASH_DAYS = 30;
+
+function trashEntry(db, entry) {
+  db.entries.splice(db.entries.indexOf(entry), 1);
+  entry.deleted_at = new Date().toISOString();
+  db.trash.push(entry);
+}
+
+// Permanently drops trashed entries older than TRASH_DAYS (all of them when `all`), files included.
+function purgeTrash(all = false) {
+  const db = readDB();
+  const cutoff = Date.now() - TRASH_DAYS * 864e5;
+  const gone = db.trash.filter(e => all || Date.parse(e.deleted_at) < cutoff);
+  if (!gone.length) return;
+  db.trash = db.trash.filter(e => !gone.includes(e));
+  gone.forEach(e => e.screenshots.forEach(removeFiles));
+  writeDB(db);
+}
+
+app.get('/api/trash', (req, res) => {
+  purgeTrash();
+  res.json([...readDB().trash].sort((a, b) => b.deleted_at.localeCompare(a.deleted_at)).map(e => ({ ...e, days_left: Math.max(0, Math.ceil(TRASH_DAYS - (Date.now() - Date.parse(e.deleted_at)) / 864e5)) })));
+});
+
+app.post('/api/trash/:id/restore', (req, res) => {
+  const db = readDB();
+  const i = db.trash.findIndex(e => e.id === req.params.id);
+  if (i === -1) return res.status(404).json({ error: 'Not in the trash' });
+  const [entry] = db.trash.splice(i, 1);
+  delete entry.deleted_at;
+  // Lists and boards may have changed while it was away.
+  entry.style_tags = entry.style_tags.map(t => canon(db.tags, t));
+  if (entry.type) entry.type = canon(db.types, entry.type);
+  if (entry.found_via) entry.found_via = canon(db.foundVia, entry.found_via);
+  entry.boards = entry.boards.filter(id => db.boards.some(b => b.id === id));
+  db.entries.push(entry);
+  writeDB(db);
+  res.json(entry);
+});
+
+app.delete('/api/trash/:id', (req, res) => {
+  const db = readDB();
+  const entry = db.trash.find(e => e.id === req.params.id);
+  if (!entry) return res.status(404).json({ error: 'Not in the trash' });
+  db.trash.splice(db.trash.indexOf(entry), 1);
+  entry.screenshots.forEach(removeFiles);
+  writeDB(db);
+  res.json({ ok: true });
+});
+
+app.delete('/api/trash', (req, res) => {
+  purgeTrash(true);
+  res.json({ ok: true });
+});
+
 // ─── Entries ──────────────────────────────────────────────────────────────────
 // Filtering/searching happens in the browser (it holds the full list), so this
 // just returns everything, newest first.
@@ -489,8 +637,8 @@ app.put('/api/entries/:id', (req, res) => {
 // Add a screenshot (the first one becomes the cover)
 app.post('/api/entries/:id/screenshot', upload.single('screenshot'), bindSpace, async (req, res) => {
   if (!req.file) throw httpError(400, 'No file uploaded');
-  const entry = await attachScreenshot(req.params.id, req.file.filename);
-  res.json({ screenshot: req.file.filename, screenshots: entry.screenshots });
+  const { entry, duplicateOf } = await attachScreenshot(req.params.id, req.file.filename);
+  res.json({ screenshot: req.file.filename, screenshots: entry.screenshots, duplicateOf });
 });
 
 // Remove one screenshot; the palette follows whichever image is now the cover.
@@ -515,8 +663,7 @@ app.delete('/api/entries/:id', (req, res) => {
   const db = readDB();
   const idx = db.entries.findIndex(e => e.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Not found' });
-  const [entry] = db.entries.splice(idx, 1);
-  entry.screenshots.forEach(removeFiles);
+  trashEntry(db, db.entries[idx]);
   writeDB(db);
   res.json({ ok: true });
 });
@@ -525,6 +672,7 @@ app.delete('/api/entries/:id', (req, res) => {
 app.post('/api/entries/bulk', (req, res) => {
   const { ids, action } = req.body;
   if (!Array.isArray(ids) || !ids.every(id => typeof id === 'string')) throw httpError(400, 'ids array required');
+  if (ids.length > MAX_BULK_IDS) throw httpError(400, `At most ${MAX_BULK_IDS} ids per request`);
   const db = readDB();
 
   const boardIds = () => {
@@ -535,7 +683,7 @@ app.post('/api/entries/bulk', (req, res) => {
   let apply;
   switch (action) {
     case 'delete':
-      apply = e => { db.entries.splice(db.entries.indexOf(e), 1); e.screenshots.forEach(removeFiles); };
+      apply = e => trashEntry(db, e);
       break;
     case 'tag': {
       const tag = canon(db.tags, cleanString(req.body.tag, 'tag', 100));
@@ -729,8 +877,8 @@ app.post('/api/entries/:id/screenshot-url', async (req, res) => {
   if (!ext) throw httpError(400, 'Only PNG, JPEG, WEBP, GIF, or AVIF images are allowed');
   const file = `${uuidv4()}${ext}`;
   fs.writeFileSync(path.join(UPLOADS_DIR, file), img.buffer);
-  const entry = await attachScreenshot(req.params.id, file, true);
-  res.json({ screenshot: file, screenshots: entry.screenshots });
+  const { entry, duplicateOf } = await attachScreenshot(req.params.id, file, true);
+  res.json({ screenshot: file, screenshots: entry.screenshots, duplicateOf });
 });
 
 // ─── Boards ───────────────────────────────────────────────────────────────────
@@ -971,7 +1119,7 @@ app.delete('/api/found-via/:name', (req, res) => {
 
 // ─── Export ───────────────────────────────────────────────────────────────────
 app.get('/api/export', (req, res) => {
-  const db = readDB();
+  const db = { ...readDB(), trash: undefined }; // the trash isn't part of the library you'd move or back up
   const fmt = req.query.format || 'json';
   const space = currentSpace();
   const base = space === 'ui' ? 'omniview-export' : `omniview-${space}-export`;
@@ -1001,7 +1149,7 @@ app.get('/api/export', (req, res) => {
 function sweepUnused(dryRun) {
   const used = new Set(attaching);
   // Uploads are shared by every space, so a file is unused only if no space's entries reference it.
-  Object.values(SPACES).forEach(lib => lib.data.entries.forEach(e => e.screenshots.forEach(f => used.add(f))));
+  Object.values(SPACES).forEach(lib => [...lib.data.entries, ...lib.data.trash].forEach(e => e.screenshots.forEach(f => used.add(f))));
   let removed = 0;
   let bytes = 0;
   const sweep = (dir, isUsed) => fs.readdirSync(dir, { withFileTypes: true })
@@ -1026,6 +1174,7 @@ app.post('/api/cleanup', (req, res) => res.json(sweepUnused(false)));
 // AVIFs (already compact) are left alone, as is anything that wouldn't get smaller.
 const MAX_ORIGINAL_PX = 2400;
 app.post('/api/optimize', async (req, res) => {
+  fileHashes.clear();
   const renames = new Map();
   let saved = 0;
   const files = fs.readdirSync(UPLOADS_DIR, { withFileTypes: true }).filter(d => d.isFile() && /\.(png|jpe?g|webp)$/i.test(d.name));
@@ -1048,7 +1197,7 @@ app.post('/api/optimize', async (req, res) => {
   if (renames.size) {
     const swap = f => renames.get(f) ?? f;
     for (const lib of Object.values(SPACES)) {
-      lib.data.entries.forEach(e => {
+      [...lib.data.entries, ...lib.data.trash].forEach(e => {
         if (!e.screenshots.some(f => renames.has(f))) return;
         e.screenshots = e.screenshots.map(swap);
         e.remote_shots = e.remote_shots.map(swap);
@@ -1059,14 +1208,38 @@ app.post('/api/optimize', async (req, res) => {
     await flushDB(); // references are on disk before the old files go
     renames.forEach((_, old) => fs.rmSync(path.join(UPLOADS_DIR, old), { force: true }));
   }
+  fileHashes.clear(); // files were rewritten under the same names
   res.json({ converted: renames.size, saved });
+});
+
+// Files directly inside `dir` (subfolders are counted on their own).
+function dirStats(dir) {
+  let files = 0;
+  let bytes = 0;
+  for (const d of fs.existsSync(dir) ? fs.readdirSync(dir, { withFileTypes: true }) : []) {
+    if (!d.isFile()) continue;
+    files++;
+    bytes += fs.statSync(path.join(dir, d.name)).size;
+  }
+  return { files, bytes };
+}
+
+app.get('/api/storage', (req, res) => {
+  res.json({
+    dataDir: path.dirname(DB_PATH),
+    uploadsDir: UPLOADS_DIR,
+    spaces: Object.fromEntries(Object.entries(SPACES).map(([name, lib]) => [name, { entries: lib.data.entries.length, trash: lib.data.trash.length }])),
+    uploads: dirStats(UPLOADS_DIR),
+    thumbs: dirStats(THUMBS_DIR),
+    backups: dirStats(BACKUP_DIR)
+  });
 });
 
 // ─── Reset ────────────────────────────────────────────────────────────────────
 app.post('/api/reset', (req, res) => {
   if (req.body.confirm !== 'reset') throw httpError(400, 'Send {"confirm":"reset"} to wipe this library');
   const db = readDB();
-  db.entries.forEach(e => e.screenshots.forEach(removeFiles));
+  [...db.entries, ...db.trash].forEach(e => e.screenshots.forEach(removeFiles));
   writeDB(JSON.parse(JSON.stringify(SPACES[currentSpace()].defaults)));
   res.json({ ok: true });
 });
@@ -1085,7 +1258,7 @@ app.use((err, req, res, next) => {
   if (err.status && err.status < 500) {
     return res.status(err.status).json({ error: err.message });
   }
-  console.error(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} error:`, err);
+  console.error(`[${new Date().toISOString()}] ${req.method} ${logUrl(req)} error:`, err);
   res.status(err.status || 500).json({ error: err.status ? err.message : 'Internal server error' });
 });
 
@@ -1113,19 +1286,51 @@ async function backfillSpace() {
 }
 
 // ─── Start ────────────────────────────────────────────────────────────────────
+// Two servers on one database would silently overwrite each other's writes, so
+// the first one claims `.lock` (its PID) and a second refuses to start. A lock
+// left by a crashed process (PID no longer running) is taken over.
+// ponytail: a PID recycled by an unrelated process after a reboot looks alive; delete db/.lock by hand then.
+function acquireLock(lockPath) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      fs.writeFileSync(lockPath, String(process.pid), { flag: 'wx' });
+      return;
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err;
+      const pid = parseInt(fs.readFileSync(lockPath, 'utf8'), 10);
+      let alive = false;
+      try { process.kill(pid, 0); alive = pid !== process.pid; } catch (e) { alive = e.code === 'EPERM'; }
+      if (alive || attempt) throw new Error(`Another Omniview (PID ${pid}) is already using ${path.dirname(lockPath)}. Stop it first, or delete ${lockPath} if it is not running.`);
+      fs.rmSync(lockPath, { force: true });
+    }
+  }
+}
+
 module.exports = app;
 app.flushDB = flushDB;
+app.acquireLock = acquireLock;
+app.libraryProblems = libraryProblems;
 
 if (require.main === module) {
   // A fatal error leaves the process in an unknown state: log it and exit
   // rather than carry on (the pending save is flushed by the exit handler).
   process.on('uncaughtException', err => { console.error('Uncaught exception:', err); process.exit(1); });
   process.on('unhandledRejection', err => { console.error('Unhandled rejection:', err); process.exit(1); });
-  process.on('exit', flushSync);
+  try {
+    acquireLock(LOCK_PATH);
+  } catch (err) {
+    console.error(err.message);
+    process.exit(1);
+  }
+  process.on('exit', () => {
+    flushSync();
+    fs.rmSync(LOCK_PATH, { force: true });
+  });
   ['SIGINT', 'SIGTERM'].forEach(sig => process.on(sig, async () => { await flushDB(); process.exit(0); }));
 
   app.listen(PORT, '127.0.0.1', () => {
     console.log(`\n🎨 Omniview running at http://localhost:${PORT}\n`);
     backfillImages();
+    Object.keys(SPACES).forEach(space => spaceStore.run(space, () => purgeTrash()));
   });
 }

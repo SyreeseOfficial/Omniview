@@ -48,26 +48,11 @@ All items from this section are under **Completed** or **Skipped** at the bottom
 
 ## 10. Data safety & portability
 
-- [ ] **[H]** Surface save failures. `flushDB` catches write errors and only logs (`server.js:152`); the UI keeps saying everything is fine. Track `lastSaveError` and show a persistent banner ("Changes are not being saved: disk full?").
-- [ ] **[H]** Refuse to start a second server on the same database: write `db/.lock` (PID) at startup, remove on exit. Two `npm start` runs on different ports silently overwrite each other's writes.
-- [ ] **[M]** "Export everything": one ZIP with both libraries and all screenshots. Export is per space today, and restore/import will want a single file.
-- [ ] **[M]** "Backup now" button plus the last backup time in Settings, so the 7-day rotation is visible and you can force one before a risky bulk edit.
-- [ ] **[M]** Restore from a backup in the UI: list `db/backups/` files with entry counts, preview, restore one (after taking a safety copy first).
-- [ ] **[M]** Longer backup tail: keep 7 daily plus 4 weekly plus 3 monthly so a problem noticed after a week is still recoverable.
-- [ ] **[M]** Soft delete with a Trash view (`deleted_at`, purge after 30 days). The 5-second Undo is the only safety net after a bulk delete.
-- [ ] **[M]** Storage panel in Settings: entries per space, upload size, thumbs size, backup size, data directory path.
-- [ ] **[L]** Validate the library shape on load and log specific problems (missing `id`, duplicate ids, a board referenced by an entry that no longer exists) instead of trusting it.
-- [ ] **[L]** Detect duplicate screenshots by content hash on upload and say "this image is already on <entry>".
-- [ ] **[L]** Move the data directory to a configurable location by default (`$XDG_DATA_HOME/omniview`), so updating or re-cloning the app never touches the library.
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ## 11. Security & privacy
 
-- [ ] **[H]** Stop committing personal data. `db/library.json`, `db/fashion.json` and `uploads/*` are tracked (see `git status`: the commit "Update fashion library data and uploads"). If the repo is ever pushed publicly, the wishlist and screenshots leak. Add them to `.gitignore`, `git rm --cached`, and keep a tiny sample dataset for tests/screenshots. Back the data up separately.
-- [ ] **[M]** Cap request bodies per route (`express.json({ limit })`) and the bulk `ids` length; today `bulk` accepts any array that fits the default 100 kb.
-- [ ] **[L]** Log only the path (not the query) for `/api/unfurl` and `/api/entries/:id/screenshot-url`: saved shop URLs can carry session or signed-token params that then sit in terminal scrollback.
-- [ ] **[L]** Lint/test that flags template-literal `innerHTML` with an unescaped variable (grep-level check in `npm test`) to protect the 30 `innerHTML` sites.
-- [ ] **[L]** Strip EXIF (GPS) from uploads on processing. `sharp` drops it when re-encoding, but originals are stored as uploaded and shared in ZIP exports.
-- [ ] **[L]** Settings toggle "never fetch pages for me" (disable unfurl and screenshot-url) for a fully offline mode.
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ## 12. Code, tests & dev experience
 
@@ -87,13 +72,7 @@ All items from this section are under **Completed** or **Skipped** at the bottom
 
 ## 13. Docs & repo
 
-- [ ] **[M]** README doesn't mention what Fashion autofill does now (JSON-LD brand/price/type/color, image picker, whole-dollar rounding). Add one bullet and a short "How autofill decides" section.
-- [ ] **[M]** Restructure `FINDINGS.md`: open items sit under a heading called "Skip", and open items from Round 2 are interleaved with done ones. A single `## Open` (sorted by priority) and `## Done` makes it usable as a to-do list.
-- [ ] **[L]** Rename `docs/FASHION_SPACE.md` from a "plan" to a design record ("as built" is already at the bottom) and link it from the README.
-- [ ] **[L]** Add a fashion screenshot next to `docs/sidebar-collapsed.png`.
-- [ ] **[L]** Add a `LICENSE` (or an explicit "personal use" note) before the repo is shared.
-- [ ] **[L]** `CHANGELOG.md` generated from commit subjects; the history is already tidy ("Fashion autofill: ...").
-- [ ] **[L]** README section "Where is my data?" (paths, backups, how to move to another machine).
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ## 14. Big bets
 
@@ -233,6 +212,22 @@ Already listed there, but I'd move them up:
 - [x] **[L]** Quiet the request log for static assets. Every page load prints ~50 lines (each thumb), burying real errors and writes.
 - [x] **[L]** Cache the static `public/` assets with a content-hash query string or `ETag` + `maxAge`, since there is no bundler.
 - [x] **[H]** Settings → "Check unused files" shows the count and size before deleting. `cleanup-btn` runs the sweep immediately, with no preview, on a button next to harmless ones.
+- [x] **[H]** Surface save failures. `flushDB` catches write errors and only logs (`server.js:152`); the UI keeps saying everything is fine. Track `lastSaveError` and show a persistent banner ("Changes are not being saved: disk full?").
+- [x] **[H]** Refuse to start a second server on the same database: write `db/.lock` (PID) at startup, remove on exit. Two `npm start` runs on different ports silently overwrite each other's writes.
+- [x] **[M]** Soft delete with a Trash view (`deleted_at`, purge after 30 days). The 5-second Undo is the only safety net after a bulk delete.
+- [x] **[M]** Storage panel in Settings: entries per space, upload size, thumbs size, backup size, data directory path.
+- [x] **[L]** Validate the library shape on load and log specific problems (missing `id`, duplicate ids, a board referenced by an entry that no longer exists) instead of trusting it.
+- [x] **[L]** Detect duplicate screenshots by content hash on upload and say "this image is already on <entry>".
+- [x] **[M]** Cap request bodies per route (`express.json({ limit })`) and the bulk `ids` length; today `bulk` accepts any array that fits the default 100 kb.
+- [x] **[L]** Log only the path (not the query) for `/api/unfurl` and `/api/entries/:id/screenshot-url`: saved shop URLs can carry session or signed-token params that then sit in terminal scrollback.
+- [x] **[L]** Lint/test that flags template-literal `innerHTML` with an unescaped variable (grep-level check in `npm test`) to protect the 30 `innerHTML` sites.
+- [x] **[L]** Strip EXIF (GPS) from uploads on processing. `sharp` drops it when re-encoding, but originals are stored as uploaded and shared in ZIP exports.
+- [x] **[M]** README doesn't mention what Fashion autofill does now (JSON-LD brand/price/type/color, image picker, whole-dollar rounding). Add one bullet and a short "How autofill decides" section.
+- [x] **[M]** Restructure `FINDINGS.md`: open items sit under a heading called "Skip", and open items from Round 2 are interleaved with done ones. A single `## Open` (sorted by priority) and `## Done` makes it usable as a to-do list.
+- [x] **[L]** Rename `docs/FASHION_SPACE.md` from a "plan" to a design record ("as built" is already at the bottom) and link it from the README.
+- [x] **[L]** Add a `LICENSE` (or an explicit "personal use" note) before the repo is shared.
+- [x] **[L]** `CHANGELOG.md` generated from commit subjects; the history is already tidy ("Fashion autofill: ...").
+- [x] **[L]** README section "Where is my data?" (paths, backups, how to move to another machine).
 
 ## Skipped
 
@@ -285,3 +280,11 @@ Parked for now, not rejected.
 - [ ] **[L]** Text-scale test at 200% zoom and 18px base font; fix clipped controls.
 - [ ] **[L]** 600px thumbnails look soft on hi-DPI masonry; generate a 1200px variant and use `srcset`.
 - [ ] **[L]** Skip `extractPalette` for fashion-space uploads (the swatch filter is hidden there), saving CPU and keeping `palette` empty.
+- [ ] **[M]** "Export everything": one ZIP with both libraries and all screenshots. Export is per space today, and restore/import will want a single file.
+- [ ] **[M]** "Backup now" button plus the last backup time in Settings, so the 7-day rotation is visible and you can force one before a risky bulk edit.
+- [ ] **[M]** Restore from a backup in the UI: list `db/backups/` files with entry counts, preview, restore one (after taking a safety copy first).
+- [ ] **[M]** Longer backup tail: keep 7 daily plus 4 weekly plus 3 monthly so a problem noticed after a week is still recoverable.
+- [ ] **[L]** Move the data directory to a configurable location by default (`$XDG_DATA_HOME/omniview`), so updating or re-cloning the app never touches the library.
+- [ ] **[H]** Stop committing personal data. `db/library.json`, `db/fashion.json` and `uploads/*` are tracked (see `git status`: the commit "Update fashion library data and uploads"). If the repo is ever pushed publicly, the wishlist and screenshots leak. Add them to `.gitignore`, `git rm --cached`, and keep a tiny sample dataset for tests/screenshots. Back the data up separately.
+- [ ] **[L]** Settings toggle "never fetch pages for me" (disable unfurl and screenshot-url) for a fully offline mode.
+- [ ] **[L]** Add a fashion screenshot next to `docs/sidebar-collapsed.png`.

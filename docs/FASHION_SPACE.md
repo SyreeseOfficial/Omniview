@@ -1,6 +1,6 @@
-# Fashion space: plan
+# Fashion space: design record
 
-Decided and built 2026-10-17 (the design below is what shipped; tests in `test/api.test.js` under "Spaces"). Goal: use Omniview as a fashion wishlist too, in the same app, on the same `localhost:3737`.
+Decided and built 2026-10-17 (a record of the decisions and what shipped; see "As built" at the bottom; tests in `test/api.test.js` under "Spaces"). Linked from the [README](../README.md). Goal: use Omniview as a fashion wishlist too, in the same app, on the same `localhost:3737`.
 
 ## Decisions
 

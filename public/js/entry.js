@@ -1,7 +1,7 @@
 // The Add Entry form (auto-fill, duplicate check, screenshot queue) and the
 // entry detail modal (screenshot carousel, palette, prev/next, save).
 
-import { state, boardLabel, safeHref, isHttpUrl, faviconImg, colorName, thumbImg, titleOf, PLACEHOLDER_SVG, COLOR_NAMES } from './state.js';
+import { state, boardLabel, safeHref, isHttpUrl, faviconImg, colorName, thumbImg, titleOf, PLACEHOLDER_SVG, COLOR_NAMES, escHtml } from './state.js';
 import { moreLike, timeAgo, contrastRatio, contrastLevel, dominantColors } from './lib.js';
 import { guessFashionFields, guessFoundVia, applyCorrections, recordCorrections } from './autofill.js';
 import { api } from './api.js';
@@ -409,7 +409,7 @@ export function setupAddForm() {
         btn.textContent = `Uploading ${++n} of ${state.pending.length}…`;
         try {
           if (p.file) await api.uploadScreenshot(entry.id, p.file);
-          else await api.post(`/api/entries/${entry.id}/screenshot-url`, { url: p.url });
+          else await api.postScreenshotUrl(entry.id, p.url);
         } catch (err) {
           toastError(`Screenshot not added: ${err.message}`);
         }
@@ -457,7 +457,7 @@ export function renderFormTagPills() {
 function renderBoardChips(wrap, selected, emptyText) {
   wrap.innerHTML = '';
   if (state.boards.length === 0) {
-    wrap.innerHTML = `<span style="font-size:.75rem;color:var(--text-3)">${emptyText}</span>`;
+    wrap.innerHTML = `<span style="font-size:.75rem;color:var(--text-3)">${escHtml(emptyText)}</span>`;
     return;
   }
   state.boards.forEach(b => {

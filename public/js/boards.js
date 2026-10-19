@@ -34,7 +34,7 @@ export function renderBoards() {
     card.appendChild(boardThumbCollage(entries));
     const meta = document.createElement('div');
     meta.className = 'board-card-meta';
-    meta.innerHTML = `<div class="board-name">${escHtml(boardLabel(board))}</div><div class="board-count">${[`${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}`, priceTotal(entries)].filter(Boolean).join(' · ')}</div>`;
+    meta.innerHTML = `<div class="board-name">${escHtml(boardLabel(board))}</div><div class="board-count">${escHtml([`${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}`, priceTotal(entries)].filter(Boolean).join(' · '))}</div>`;
     card.appendChild(meta);
 
     const pin = document.createElement('button');

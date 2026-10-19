@@ -23,6 +23,8 @@
 </head>
 <body>
 
+<div class="save-banner" id="save-banner" role="alert" hidden></div>
+
 <!-- ═══════════════════════════════════════════ SIDEBAR ══ -->
 <aside class="sidebar">
   <button class="sidebar-toggle" id="sidebar-toggle" title="Collapse sidebar" aria-label="Collapse sidebar">
@@ -551,7 +553,21 @@
       </div>
 
       <div class="settings-section">
+        <details class="settings-collapse">
+          <summary class="settings-heading">
+            <span>Trash</span>
+            <span class="settings-count" id="trash-count"></span>
+            <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </summary>
+          <p class="settings-desc">Deleted entries from the <span class="space-name"></span> library stay here for 30 days, then are removed for good.</p>
+          <div class="tag-list" id="trash-list"></div>
+          <button class="btn-sm btn-danger" id="trash-empty-btn" disabled>Empty trash</button>
+        </details>
+      </div>
+
+      <div class="settings-section">
         <h2 class="settings-heading">Storage</h2>
+        <dl class="storage-stats" id="storage-stats"></dl>
         <p class="settings-desc">Delete screenshot files that no entry uses any more, in either library (for example left over from an interrupted upload). Shows the count and size first.</p>
         <button class="btn-sm" id="cleanup-btn">Check unused files</button>
         <p class="settings-desc">Re-save PNG and JPEG screenshots as WebP, at most 2400px on the longest side. Entries keep working; files that wouldn't get smaller are left alone.</p>
