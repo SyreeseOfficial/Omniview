@@ -10,6 +10,7 @@ import { setupCombos } from './options.js';
 import {
   loadPersistedFilters, setupSearch, setupFilters, setupLayoutSwitch, setupBulk, setBulkMode, renderBrowse, renderFavorites, updateStats
 } from './browse.js';
+import { renderStats } from './stats.js';
 import { setupBoards, renderBoards, closeBoardPicker, closeBoardEdit } from './boards.js';
 import {
   setupAddForm, setupDetailModal, openAddForm, isFormDirty, clearFormSnapshot, requestCloseDetail,
@@ -20,6 +21,7 @@ import { setupSettings, renderSettings } from './settings.js';
 const $ = id => document.getElementById(id);
 
 async function init() {
+  await loadSpaces();
   loadPersistedFilters();
   applySpaceUI();
   await loadAll();
@@ -54,6 +56,31 @@ async function init() {
     e.preventDefault();
     toastError((e.reason && e.reason.message) || 'Something went wrong.');
   });
+}
+
+// The server owns the list of libraries; build the switcher from it.
+const SPACE_ICONS = {
+  ui: '<rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M1.5 6h13" stroke="currentColor" stroke-width="1.5"/>',
+  fashion: '<path d="M5.5 2L1.5 4.5l1.5 3 1.5-.8V14h7V6.7l1.5.8 1.5-3L10.5 2c-.3 1-1.2 1.7-2.5 1.7S5.8 3 5.5 2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>'
+};
+const DEFAULT_SPACE_ICON = '<path d="M2 4.5A1.5 1.5 0 013.5 3h3l1.5 2h4.5A1.5 1.5 0 0114 6.5v6a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 12.5v-8z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>';
+
+async function loadSpaces() {
+  const list = await api.get('/api/spaces', 'ui');
+  Object.keys(SPACES).forEach(k => delete SPACES[k]);
+  list.forEach(s => { SPACES[s.name] = s.label; });
+  if (!SPACES[state.space]) state.space = 'ui';
+  $('space-switch').replaceChildren(...list.map(s => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'space-btn';
+    b.dataset.space = s.name;
+    b.title = `${s.label} (G)`;
+    b.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"></svg><span class="nav-label"></span>';
+    b.querySelector('svg').innerHTML = SPACE_ICONS[s.name] || DEFAULT_SPACE_ICON; // trusted constants
+    b.querySelector('.nav-label').textContent = s.label;
+    return b;
+  }));
 }
 
 export async function loadAll() {
@@ -141,6 +168,7 @@ function doNavigate(view, then) {
   // Render
   if (view === 'browse') renderBrowse();
   if (view === 'boards') renderBoards();
+  if (view === 'stats') renderStats();
   if (view === 'favorites') renderFavorites();
   if (view === 'add') openAddForm();
   if (view === 'settings') renderSettings();
@@ -154,7 +182,7 @@ function doNavigate(view, then) {
 function applySpaceUI() {
   const fashion = state.space === 'fashion';
   document.documentElement.dataset.space = state.space;
-  document.title = fashion ? 'Omniview · Fashion' : 'Omniview';
+  document.title = state.space === 'ui' ? 'Omniview' : `Omniview · ${SPACES[state.space]}`;
   document.querySelectorAll('.space-btn').forEach(b => {
     const on = b.dataset.space === state.space;
     b.classList.toggle('active', on);
@@ -327,9 +355,10 @@ function setupKeyboardShortcuts() {
       case 'b': case 'B': navigate('browse'); break;
       case 'o': case 'O': navigate('boards'); break;
       case 'f': case 'F': navigate('favorites'); break;
+      case 't': case 'T': navigate('stats'); break;
       case 's': case 'S': navigate('settings'); break;
       case 'r': case 'R': $('random-btn').click(); break;
-      case 'g': case 'G': switchSpace(state.space === 'ui' ? 'fashion' : 'ui'); break;
+      case 'g': case 'G': { const names = Object.keys(SPACES); switchSpace(names[(names.indexOf(state.space) + 1) % names.length]); break; }
       case '?': navigate('shortcuts'); break;
     }
   });

@@ -76,17 +76,7 @@ All items from this section are under **Completed** or **Skipped** at the bottom
 
 ## 14. Big bets
 
-- [ ] **[?]** `omniview` CLI / Hyprland keybind capture: `omniview add <url>` and `omniview shot` (grim + slurp region → POST as a screenshot, or clipboard via `wl-paste`). A ~30-line shell script with `curl -H 'X-Omniview: 1'` gives one-keystroke capture on this machine without a browser extension.
-- [ ] **[?]** Configurable spaces: `SPACES = { ui, fashion }` is hard-coded, and Fashion required touching four server spots. A spaces table (name, default lists, extra fields like `brand`/`price`) would make "Recipes", "Furniture" or "Books" a config entry.
-- [ ] **[?]** Searchable text inside screenshots via local OCR (`tesseract.js`), so "pricing", a headline, or a product name finds the design. Stays local, store the text on the entry, show it in the detail view.
-- [ ] **[?]** Local vision-model tagging (e.g. via Ollama, optional): suggests tags/type/description from the screenshot. Opt-in, never auto-applied, no cloud.
-- [ ] **[?]** Visual similarity search ("find designs that look like this") using image embeddings computed locally.
-- [ ] **[?]** Obsidian export: one Markdown note per entry with frontmatter (tags, type, url, price, brand) and the image embedded, for a vault-based workflow.
-- [ ] **[?]** Stats page: entries per month, top tags, top found-via sources, an aggregate "your palette" strip across favorites.
-- [ ] **[?]** Free-form moodboard canvas for a board: drag, resize and overlap cards, then export as PNG.
-- [ ] **[?]** Import from a browser bookmarks HTML file or a Pinterest/Are.na export; feeds the batch-add flow.
-- [ ] **[?]** Installable PWA (`manifest.webmanifest` + icons) so Omniview opens in its own window and launches from the app menu, paired with the systemd unit already in FINDINGS.
-- [ ] **[?]** Cross-links between entries ("related", "alternative to") shown as a small graph or list in the detail view.
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ---
 
@@ -95,13 +85,8 @@ All items from this section are under **Completed** or **Skipped** at the bottom
 A second pass with fresh eyes on the code paths I didn't read closely the first time (validation, bulk, cleanup, export, autofill, the form).
 
 ### Server edge cases
-- [ ] **[M]** `PUT /api/boards/:id` with a blank name returns 200 and changes nothing (confirmed) (`server.js:722`), while `POST` returns 400. Return 400 so the client can show a message.
-- [ ] **[M]** `DELETE /api/tags/:name`, `/types/:name`, `/found-via/:name` return 200 for a name that doesn't exist; `PUT` returns 404. Make delete consistent so typos are not silent successes.
-- [ ] **[M]** Confirmed bug: `POST /api/tags/merge` with a blank `target` answers 400 but has already registered an empty-string tag (`canon(db.tags, '')` runs before the `!target` check, `server.js:771-772`); `GET /api/tags` then contains `""`. Validate non-empty before calling `canon`.
-- [ ] **[M]** Bulk `ids` that match nothing still return `{ ok: true }` and write the DB. Return the count changed so the UI can say "0 updated" and skip the write.
-- [ ] **[L]** `POST /api/entries/bulk` `favorite` treats anything but `false` as true (`value !== false`); require a boolean like the single-entry route does.
-- [ ] **[L]** `GET /api/export?format=` accepts any value other than `json` as ZIP; return 400 for unknown formats.
-- [ ] **[L]** Export JSON strips nothing and includes derived fields (`screenshot`, `palette`); document the schema and a `version` so an importer can trust it (pairs with FINDINGS' versioned shape).
+
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ### Client behavior
 - [ ] **[M]** Space switch shows no loading state: `doSwitchSpace` awaits five requests then re-renders. Dim the grid or show the spinner during the switch so a slow response doesn't look like a hang.
@@ -228,6 +213,15 @@ Already listed there, but I'd move them up:
 - [x] **[L]** Add a `LICENSE` (or an explicit "personal use" note) before the repo is shared.
 - [x] **[L]** `CHANGELOG.md` generated from commit subjects; the history is already tidy ("Fashion autofill: ...").
 - [x] **[L]** README section "Where is my data?" (paths, backups, how to move to another machine).
+- [x] **[?]** Configurable spaces: `SPACES = { ui, fashion }` is hard-coded, and Fashion required touching four server spots. A spaces table (name, default lists, extra fields like `brand`/`price`) would make "Recipes", "Furniture" or "Books" a config entry.
+- [x] **[?]** Stats page: entries per month, top tags, top found-via sources, an aggregate "your palette" strip across favorites.
+- [x] **[M]** `PUT /api/boards/:id` with a blank name returns 200 and changes nothing (confirmed) (`server.js:722`), while `POST` returns 400. Return 400 so the client can show a message.
+- [x] **[M]** `DELETE /api/tags/:name`, `/types/:name`, `/found-via/:name` return 200 for a name that doesn't exist; `PUT` returns 404. Make delete consistent so typos are not silent successes.
+- [x] **[M]** Confirmed bug: `POST /api/tags/merge` with a blank `target` answers 400 but has already registered an empty-string tag (`canon(db.tags, '')` runs before the `!target` check, `server.js:771-772`); `GET /api/tags` then contains `""`. Validate non-empty before calling `canon`.
+- [x] **[M]** Bulk `ids` that match nothing still return `{ ok: true }` and write the DB. Return the count changed so the UI can say "0 updated" and skip the write.
+- [x] **[L]** `POST /api/entries/bulk` `favorite` treats anything but `false` as true (`value !== false`); require a boolean like the single-entry route does.
+- [x] **[L]** `GET /api/export?format=` accepts any value other than `json` as ZIP; return 400 for unknown formats.
+- [x] **[L]** Export JSON strips nothing and includes derived fields (`screenshot`, `palette`); document the schema and a `version` so an importer can trust it (pairs with FINDINGS' versioned shape).
 
 ## Skipped
 
@@ -288,3 +282,12 @@ Parked for now, not rejected.
 - [ ] **[H]** Stop committing personal data. `db/library.json`, `db/fashion.json` and `uploads/*` are tracked (see `git status`: the commit "Update fashion library data and uploads"). If the repo is ever pushed publicly, the wishlist and screenshots leak. Add them to `.gitignore`, `git rm --cached`, and keep a tiny sample dataset for tests/screenshots. Back the data up separately.
 - [ ] **[L]** Settings toggle "never fetch pages for me" (disable unfurl and screenshot-url) for a fully offline mode.
 - [ ] **[L]** Add a fashion screenshot next to `docs/sidebar-collapsed.png`.
+- [ ] **[?]** `omniview` CLI / Hyprland keybind capture: `omniview add <url>` and `omniview shot` (grim + slurp region → POST as a screenshot, or clipboard via `wl-paste`). A ~30-line shell script with `curl -H 'X-Omniview: 1'` gives one-keystroke capture on this machine without a browser extension.
+- [ ] **[?]** Searchable text inside screenshots via local OCR (`tesseract.js`), so "pricing", a headline, or a product name finds the design. Stays local, store the text on the entry, show it in the detail view.
+- [ ] **[?]** Local vision-model tagging (e.g. via Ollama, optional): suggests tags/type/description from the screenshot. Opt-in, never auto-applied, no cloud.
+- [ ] **[?]** Visual similarity search ("find designs that look like this") using image embeddings computed locally.
+- [ ] **[?]** Obsidian export: one Markdown note per entry with frontmatter (tags, type, url, price, brand) and the image embedded, for a vault-based workflow.
+- [ ] **[?]** Free-form moodboard canvas for a board: drag, resize and overlap cards, then export as PNG.
+- [ ] **[?]** Import from a browser bookmarks HTML file or a Pinterest/Are.na export; feeds the batch-add flow.
+- [ ] **[?]** Installable PWA (`manifest.webmanifest` + icons) so Omniview opens in its own window and launches from the app menu, paired with the systemd unit already in FINDINGS.
+- [ ] **[?]** Cross-links between entries ("related", "alternative to") shown as a small graph or list in the detail view.

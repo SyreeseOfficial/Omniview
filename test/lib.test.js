@@ -95,3 +95,22 @@ test('tag aliases and near-duplicate detection', async () => {
   assert.equal(similarTag('Playful', tags), null);
   assert.equal(similarTag('Min', tags), null, 'short prefixes are not near-duplicates');
 });
+
+test('libraryStats counts months, top tags/sources and favorites\' palette', async () => {
+  const { libraryStats } = await import('../public/js/lib.js');
+  const now = new Date(2026, 9, 18); // October
+  const e = (date, over = {}) => ({ date_added: new Date(date).toISOString(), style_tags: [], palette: [], favorite: false, found_via: '', type: null, ...over });
+  const s = libraryStats([
+    e(new Date(2026, 9, 2), { style_tags: ['Minimal', 'Bold'], found_via: 'Dribbble', favorite: true, palette: ['#ff0000', '#00ff00'] }),
+    e(new Date(2026, 9, 9), { style_tags: ['Minimal'], found_via: 'Dribbble', favorite: true, palette: ['#fe0101'] }),
+    e(new Date(2025, 10, 3), { type: 'Website' }),
+    e(new Date(2020, 0, 1), { style_tags: ['Old'] }) // outside the window: counted in total and tags, not in months
+  ], now);
+  assert.equal(s.total, 4);
+  assert.equal(s.perMonth.length, 12);
+  assert.deepEqual([s.perMonth[0].key, s.perMonth[0].n], ['2025-11', 1]);
+  assert.deepEqual([s.perMonth[11].key, s.perMonth[11].n, s.perMonth[11].label], ['2026-10', 2, 'Oct']);
+  assert.deepEqual(s.tags[0], ['Minimal', 2]);
+  assert.deepEqual(s.via, [['Dribbble', 2]]);
+  assert.equal(s.palette.length, 2, 'near-identical reds collapse into one');
+});

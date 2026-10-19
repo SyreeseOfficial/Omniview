@@ -153,3 +153,44 @@ export function similarTag(name, tags) {
     return short.length >= 5 && long.length === short.length && [...short].filter((c, i) => c !== long[i]).length === 1;
   }) || null;
 }
+
+// ─── Stats ───────────────────────────────────────────────────────────────────
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// [name, count] pairs, most used first (ties alphabetical), blanks skipped.
+const top = (names, n) => {
+  const counts = new Map();
+  for (const x of names) if (x) counts.set(x, (counts.get(x) || 0) + 1);
+  return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, n);
+};
+
+// Everything the Stats page shows. `months` is the number of calendar months ending at `now`
+// (empty ones included, so gaps are visible). `palette` merges the palettes of favorites
+// into the colors they use most, skipping near-duplicates like the per-entry palette does.
+export function libraryStats(entries, now = new Date(), months = 12) {
+  const perMonth = Array.from({ length: months }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (months - 1 - i), 1);
+    return { key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, label: MONTHS[d.getMonth()], n: 0 };
+  });
+  const byKey = new Map(perMonth.map(m => [m.key, m]));
+  for (const e of entries) {
+    const d = new Date(e.date_added);
+    const m = byKey.get(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    if (m) m.n++;
+  }
+  const colors = top(entries.filter(e => e.favorite).flatMap(e => e.palette.map(c => c.toLowerCase())), Infinity);
+  const palette = [];
+  for (const [hex] of colors) {
+    const c = rgb(hex);
+    if (palette.every(p => Math.hypot(c[0] - p[0], c[1] - p[1], c[2] - p[2]) > 48)) palette.push(c);
+    if (palette.length === 10) break;
+  }
+  return {
+    total: entries.length,
+    perMonth,
+    tags: top(entries.flatMap(e => e.style_tags), 8),
+    via: top(entries.map(e => e.found_via), 8),
+    types: top(entries.map(e => e.type), 8),
+    palette: palette.map(c => '#' + c.map(v => v.toString(16).padStart(2, '0')).join(''))
+  };
+}

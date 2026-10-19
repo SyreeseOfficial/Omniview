@@ -53,15 +53,20 @@ const FASHION_DB = {
   foundVia: ['Google', 'Instagram', 'Pinterest', 'Reddit', 'Referral', 'Store']
 };
 
-// Two independent libraries ("spaces"). Each is loaded once at startup and kept
-// live in memory. Every route mutates and reads its space's object, so there's
+// Independent libraries ("spaces"). A new one is a new entry here (plus nothing else):
+//   label    shown in the space switcher
+//   file     where it is saved
+//   defaults the starting tags / types / found-via lists
+//   fields   extra string fields on each entry, as { name: maxLength }
+// Each is loaded once at startup and kept live in memory. Every route mutates and reads its space's object, so there's
 // no per-request disk read (cheap) and no race between two requests reading
 // stale state off disk (the thing the old read-mutate-write-per-request
 // version was vulnerable to).
 const SPACES = {
-  ui: { file: DB_PATH, defaults: DEFAULT_DB, data: null, dirty: false },
-  fashion: { file: FASHION_DB_PATH, defaults: FASHION_DB, data: null, dirty: false }
+  ui: { label: 'UI', file: DB_PATH, defaults: DEFAULT_DB, fields: {} },
+  fashion: { label: 'Fashion', file: FASHION_DB_PATH, defaults: FASHION_DB, fields: { brand: 100, price: 50 } }
 };
+Object.values(SPACES).forEach(lib => Object.assign(lib, { data: null, dirty: false }));
 
 // The request's space. AsyncLocalStorage (not a module variable) because routes
 // `await` page fetches and image work, so requests interleave.
@@ -81,10 +86,7 @@ function normalizeEntry(e, space) {
   if (typeof e.note !== 'string') e.note = '';
   if (typeof e.found_via !== 'string') e.found_via = '';
   e.favorite = !!e.favorite;
-  if (space === 'fashion') {
-    if (typeof e.brand !== 'string') e.brand = '';
-    if (typeof e.price !== 'string') e.price = '';
-  }
+  for (const f of Object.keys(SPACES[space].fields)) if (typeof e[f] !== 'string') e[f] = '';
 }
 
 // Specific problems in a loaded library, as readable lines. Only reported, never
@@ -388,6 +390,7 @@ app.use('/api', (req, res, next) => {
   if (err) res.setHeader('X-Save-Error', err.replace(/[^\x20-\x7e]/g, '?'));
   next();
 });
+app.get('/api/spaces', (req, res) => res.json(Object.entries(SPACES).map(([name, lib]) => ({ name, label: lib.label, fields: Object.keys(lib.fields) }))));
 app.get('/api/health', (req, res) => res.json({ ok: true, saveError: saveError() }));
 
 app.use(compression());
@@ -459,9 +462,8 @@ function cleanEntryFields(body, db, create) {
   if (has('color')) out.color = optional(body.color) === null ? null : cleanString(body.color, 'color', 50) || null;
   if (has('found_via')) out.found_via = optional(body.found_via) === null ? '' : cleanString(body.found_via, 'found_via', 100);
   if (has('favicon')) out.favicon = optional(body.favicon) === null ? null : cleanHttpUrl(body.favicon, 'favicon');
-  if (currentSpace() === 'fashion') {
-    if (has('price')) out.price = cleanString(body.price, 'price', 50);
-    if (has('brand')) out.brand = cleanString(body.brand, 'brand', 100);
+  for (const [f, max] of Object.entries(SPACES[currentSpace()].fields)) {
+    if (has(f)) out[f] = cleanString(body[f], f, max);
   }
   if (has('favorite')) {
     if (typeof body.favorite !== 'boolean') throw httpError(400, 'favorite must be a boolean');
@@ -604,7 +606,7 @@ app.post('/api/entries', (req, res) => {
     favorite: false,
     boards: [],
     date_added: new Date().toISOString(),
-    ...(currentSpace() === 'fashion' && { brand: '', price: '' }),
+    ...Object.fromEntries(Object.keys(SPACES[currentSpace()].fields).map(f => [f, ''])),
     ...fields
   };
 
@@ -669,11 +671,17 @@ app.delete('/api/entries/:id', (req, res) => {
 });
 
 // Bulk actions
+const BULK_ACTIONS = ['delete', 'tag', 'untag', 'setType', 'addToBoard', 'removeFromBoard', 'favorite'];
 app.post('/api/entries/bulk', (req, res) => {
   const { ids, action } = req.body;
   if (!Array.isArray(ids) || !ids.every(id => typeof id === 'string')) throw httpError(400, 'ids array required');
   if (ids.length > MAX_BULK_IDS) throw httpError(400, `At most ${MAX_BULK_IDS} ids per request`);
+  if (!BULK_ACTIONS.includes(action)) throw httpError(400, 'Unknown bulk action');
   const db = readDB();
+  const wanted = new Set(ids);
+  const targets = db.entries.filter(e => wanted.has(e.id));
+  // Nothing matched: skip the write (and the side effects of registering a new tag/type).
+  if (!targets.length) return res.json({ ok: true, updated: 0 });
 
   const boardIds = () => {
     const wanted = cleanList([].concat(req.body.boards ?? []), 'boards', 100);
@@ -712,7 +720,8 @@ app.post('/api/entries/bulk', (req, res) => {
       break;
     }
     case 'favorite': {
-      const value = req.body.value !== false;
+      if (typeof req.body.value !== 'boolean') throw httpError(400, 'value must be a boolean');
+      const value = req.body.value;
       apply = e => { e.favorite = value; };
       break;
     }
@@ -720,14 +729,13 @@ app.post('/api/entries/bulk', (req, res) => {
       throw httpError(400, 'Unknown bulk action');
   }
 
-  const wanted = new Set(ids);
   const now = new Date().toISOString();
-  db.entries.filter(e => wanted.has(e.id)).forEach(e => {
+  targets.forEach(e => {
     apply(e);
     if (action !== 'delete' && action !== 'favorite' && !/Board$/.test(action)) e.updated_at = now;
   });
   writeDB(db);
-  res.json({ ok: true });
+  res.json({ ok: true, updated: targets.length });
 });
 
 // ─── Page info (auto-fill from URL) ───────────────────────────────────────────
@@ -994,8 +1002,9 @@ app.post('/api/tags/merge', (req, res) => {
   const db = readDB();
   const sources = cleanList(req.body.sources, 'sources', 100).filter(t => db.tags.includes(t));
   if (!sources.length) throw httpError(400, 'No existing tags to merge');
-  const target = canon(db.tags, cleanString(req.body.target, 'target', 100));
-  if (!target) throw httpError(400, 'target required');
+  const name = cleanString(req.body.target, 'target', 100);
+  if (!name) throw httpError(400, 'target required');
+  const target = canon(db.tags, name);
   const gone = new Set(sources.filter(t => t !== target));
   db.tags = db.tags.filter(t => !gone.has(t));
   db.entries.forEach(e => {
@@ -1035,6 +1044,7 @@ app.put('/api/tags/:name', (req, res) => {
 app.delete('/api/tags/:name', (req, res) => {
   const db = readDB();
   const name = req.params.name;
+  if (!db.tags.includes(name)) return res.status(404).json({ error: 'Tag not found' });
   db.tags = db.tags.filter(t => t !== name);
   // Remove from all entries
   db.entries.forEach(e => {
@@ -1074,6 +1084,7 @@ app.put('/api/types/:name', (req, res) => {
 app.delete('/api/types/:name', (req, res) => {
   const db = readDB();
   const name = req.params.name;
+  if (!db.types.includes(name)) return res.status(404).json({ error: 'Type not found' });
   db.types = db.types.filter(t => t !== name);
   // Clear it from any entry still using it
   db.entries.forEach(e => { if (e.type === name) e.type = null; });
@@ -1111,6 +1122,7 @@ app.put('/api/found-via/:name', (req, res) => {
 app.delete('/api/found-via/:name', (req, res) => {
   const db = readDB();
   const name = req.params.name;
+  if (!db.foundVia.includes(name)) return res.status(404).json({ error: 'Found via option not found' });
   db.foundVia = db.foundVia.filter(t => t !== name);
   db.entries.forEach(e => { if (e.found_via === name) e.found_via = ''; });
   writeDB(db);
@@ -1118,10 +1130,13 @@ app.delete('/api/found-via/:name', (req, res) => {
 });
 
 // ─── Export ───────────────────────────────────────────────────────────────────
+const EXPORT_VERSION = 1; // bump when the exported shape changes in a way an importer must care about
 app.get('/api/export', (req, res) => {
-  const db = { ...readDB(), trash: undefined }; // the trash isn't part of the library you'd move or back up
-  const fmt = req.query.format || 'json';
+  const fmt = req.query.format ?? 'json';
+  if (fmt !== 'json' && fmt !== 'zip') throw httpError(400, 'format must be json or zip');
   const space = currentSpace();
+  // The trash isn't part of the library you'd move or back up. See docs/EXPORT_FORMAT.md.
+  const db = { version: EXPORT_VERSION, space, ...readDB(), trash: undefined };
   const base = space === 'ui' ? 'omniview-export' : `omniview-${space}-export`;
 
   if (fmt === 'json') {

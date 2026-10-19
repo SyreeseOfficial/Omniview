@@ -1,12 +1,13 @@
 // Shared app state, constants, and small pure helpers.
 
-// Two separate libraries on one server: 'ui' (design inspiration) and 'fashion'
-// (wishlist). The server picks one per request from the X-Space header (api.js).
+// Separate libraries on one server ('ui' design inspiration, 'fashion' wishlist, and
+// whatever else server.js defines). The server picks one per request from the X-Space
+// header (api.js). name → label; replaced with the server's list at boot (loadSpaces).
 export const SPACES = { ui: 'UI', fashion: 'Fashion' };
 export const defaultFilters = () => ({ q: '', type: '', tags: [], board: '', color: '', brand: '', via: '', added: '', from: '', to: '', favorite: false, recent: false, hideBought: false, both: false, tagMode: 'any' });
 
 export const state = {
-  space: localStorage.getItem('omniview-space') === 'fashion' ? 'fashion' : 'ui',
+  space: localStorage.getItem('omniview-space') || 'ui', // checked against the server's list at boot
   view: 'browse',
   layout: 'gallery',   // gallery | masonry | list; per space, set by loadPersistedFilters
   entries: [],

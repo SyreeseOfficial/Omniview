@@ -509,6 +509,47 @@ test('deleting a board removes it from entries and counts are right', async () =
   await call('DELETE', `/api/entries/${e.id}`);
 });
 
+// ─── Round-2 edge cases ──────────────────────────────────────────────────────
+test('blank board name on rename is a 400', async () => {
+  const board = (await call('POST', '/api/boards', { name: 'KeepMe' })).body;
+  assert.equal((await call('PUT', `/api/boards/${board.id}`, { name: '   ' })).status, 400);
+  assert.equal((await call('GET', '/api/boards')).body.find(b => b.id === board.id).name, 'KeepMe');
+  await call('DELETE', `/api/boards/${board.id}`);
+});
+
+test('deleting an unknown tag, type or found-via is a 404', async () => {
+  for (const p of ['tags', 'types', 'found-via']) assert.equal((await call('DELETE', `/api/${p}/NoSuchThing`)).status, 404, p);
+});
+
+test('merging into a blank target registers nothing', async () => {
+  await call('POST', '/api/tags', { name: 'MergeBlankSrc' });
+  assert.equal((await call('POST', '/api/tags/merge', { sources: ['MergeBlankSrc'], target: '  ' })).status, 400);
+  const tags = (await call('GET', '/api/tags')).body;
+  assert.ok(!tags.includes(''));
+  assert.ok(tags.includes('MergeBlankSrc'));
+  await call('DELETE', '/api/tags/MergeBlankSrc');
+});
+
+test('bulk reports how many entries changed; no match means no side effects', async () => {
+  const e = await create('https://bulkcount.example');
+  assert.equal((await call('POST', '/api/entries/bulk', { ids: [e.id, 'ghost'], action: 'favorite', value: true })).body.updated, 1);
+  const none = await call('POST', '/api/entries/bulk', { ids: ['ghost'], action: 'tag', tag: 'NeverRegistered' });
+  assert.equal(none.body.updated, 0);
+  assert.ok(!(await call('GET', '/api/tags')).body.includes('NeverRegistered'));
+  assert.equal((await call('POST', '/api/entries/bulk', { ids: ['ghost'], action: 'nope' })).status, 400);
+  assert.equal((await call('POST', '/api/entries/bulk', { ids: [e.id], action: 'favorite', value: 'yes' })).status, 400);
+  assert.equal((await call('POST', '/api/entries/bulk', { ids: [e.id], action: 'favorite' })).status, 400);
+  await call('DELETE', `/api/entries/${e.id}`);
+});
+
+test('export refuses unknown formats and stamps a version', async () => {
+  assert.equal((await fetch(`${base}/api/export?format=xml`)).status, 400);
+  const json = await (await fetch(`${base}/api/export?format=json`)).json();
+  assert.equal(json.version, 1);
+  assert.equal(json.space, 'ui');
+  assert.equal(json.trash, undefined);
+});
+
 // ─── Export / reset (last: reset wipes everything) ───────────────────────────
 test('export returns the library as JSON and as a ZIP', async () => {
   const e = await create('https://export.example');

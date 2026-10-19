@@ -15,7 +15,8 @@ Omniview centralizes your scattered design inspiration into one searchable local
 - **Browse & Search**: Gallery, masonry, or list layout; filter by type, tag, board, favorite, or dominant color swatch
 - **Project Boards**: Group designs into project-specific boards; drag a card onto another board to add it
 - **Duplicate detection**: Saving a page you already have (ignoring `www.`, `http`/`https`, trailing slashes, and tracking parameters) offers "Open it" or "Add anyway"
-- **Two libraries**: a sidebar toggle (or `G`) switches between UI inspiration and a Fashion wishlist. Each has its own entries, tags, boards, types, and found-via list. Fashion entries also have a `brand` and a typed-in `price`, and no color filter.
+- **Stats**: entries added per month, top tags, found-via sources and types, and (UI library) the colors your favorites use most. `T` opens it.
+- **Libraries**: a sidebar toggle (or `G`) switches between UI inspiration and a Fashion wishlist (more are one config entry, see [Adding a library](#adding-a-library)). Each has its own entries, tags, boards, types, and found-via list. Fashion entries also have a `brand` and a typed-in `price`, and no color filter.
 - **Fashion autofill**: pasting a product URL fills the name, brand, price (whole dollars), type, and color from the page's structured data, and offers its other images as screenshots. See [How autofill decides](#how-autofill-decides).
 - **Local Only**: Everything runs on your machine—no cloud, no accounts, no sharing. The only outgoing requests are the page fetches you trigger by entering a URL.
 
@@ -94,18 +95,28 @@ Everything is plain files in the project folder (or wherever `OMNIVIEW_DB_PATH` 
 | `OMNIVIEW_DB_PATH` | `db/library.json` | UI library file (`fashion.json` is saved next to it) |
 | `OMNIVIEW_UPLOADS_DIR` | `uploads/` | Screenshot folder |
 
+## Adding a library
+
+Libraries live in the `SPACES` table at the top of `server.js`. One entry is all it takes; the switcher, `G`, the API and storage pick it up:
+
+```js
+recipes: { label: 'Recipes', file: path.join(path.dirname(DB_PATH), 'recipes.json'), defaults: { entries: [], trash: [], boards: [], tags: [], types: ['Dinner', 'Baking'], foundVia: [] }, fields: { servings: 20 } },
+```
+
+`fields` are extra string fields on each entry (`{ name: maxLength }`); the server stores them but the forms only render `brand`/`price` today. A new library gets the generic UI: no palette swatches and no Fashion fields.
+
 ## API
 
 JSON over HTTP on the same origin. Request bodies are capped at 100 kb (bulk: at most 5,000 ids). Every non-`GET` request must send `X-Omniview: 1`, and the `Host`/`Origin` must be local; this stops other websites from calling the API through your browser.
 
-Every `/api` call acts on one library: send `X-Space: ui|fashion` (or `?space=` for plain links such as exports). No header means `ui`; anything else is a `400`. `price` and `brand` are only read and stored in the `fashion` space.
+Every `/api` call acts on one library: send `X-Space: <name>` (`GET /api/spaces` lists them; or `?space=` for plain links such as exports). No header means `ui`; anything else is a `400`. A library's extra fields (`brand` and `price` for `fashion`) are only read and stored in that library.
 
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /api/entries`, `GET /api/entries/:id` | List (newest first) / fetch |
 | `POST /api/entries` | Create; `409` with the existing entry if the URL is already saved, unless `force: true` |
 | `PUT /api/entries/:id`, `DELETE /api/entries/:id` | Update / delete |
-| `POST /api/entries/bulk` | `{ids, action}`: `tag`, `untag`, `setType`, `addToBoard`, `removeFromBoard`, `favorite`, `delete` |
+| `POST /api/entries/bulk` | `{ids, action}`: `tag`, `untag`, `setType`, `addToBoard`, `removeFromBoard`, `favorite` (needs a boolean `value`), `delete`. Answers `{ok, updated}`; ids that match nothing change nothing |
 | `POST /api/entries/:id/screenshot` | Upload a screenshot (multipart field `screenshot`; max 10 per entry) |
 | `POST /api/entries/:id/screenshot-url` | Download an image URL as a screenshot |
 | `DELETE /api/entries/:id/screenshots/:file` | Remove one screenshot |
@@ -113,7 +124,7 @@ Every `/api` call acts on one library: send `X-Space: ui|fashion` (or `?space=` 
 | `GET /api/duplicate?url=` | Is this URL already saved? |
 | `/api/boards`, `/api/tags`, `/api/types`, `/api/found-via` | Managed lists (create, rename, delete) |
 | `POST /api/tags/merge`, `POST /api/tags/bulk-delete` | Merge or delete several tags |
-| `GET /api/export?format=json\|zip` | Export one library (ZIP includes screenshots) |
+| `GET /api/export?format=json\|zip` | Export one library (ZIP includes screenshots); any other format is a `400`. Shape: [docs/EXPORT_FORMAT.md](docs/EXPORT_FORMAT.md) |
 | `POST /api/cleanup` | Delete upload files no entry in either library references |
 | `POST /api/reset` | Wipe one library; requires `{"confirm":"reset"}` |
 

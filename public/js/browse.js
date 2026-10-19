@@ -569,7 +569,8 @@ export function renderBrowse() {
 }
 
 // ─── Search the other library too ──────────────────────────────
-const otherSpace = () => (state.space === 'ui' ? 'fashion' : 'ui');
+// ponytail: with more than two libraries this searches the first other one.
+const otherSpace = () => Object.keys(SPACES).find(s => s !== state.space);
 let alsoCache = null; // { space, entries }: fetched once per toggle, dropped on a space switch
 
 async function renderAlso() {
@@ -1007,16 +1008,16 @@ export function setupBulk() {
     const payload = bulkPayload($('bulk-action').value, $('bulk-value').value);
     if (!payload) { toastError('Choose an action and a value.'); return; }
     const ids = [...state.selectedIds];
-    const count = ids.length;
     // What each entry looked like, so Undo can put the one affected field back.
     const field = UNDO_FIELD[payload.action];
     const before = state.entries.filter(e => state.selectedIds.has(e.id)).map(e => ({ id: e.id, value: structuredClone(e[field]) }));
     const space = state.space;
-    await api.post('/api/entries/bulk', { ids, ...payload });
+    const { updated } = await api.post('/api/entries/bulk', { ids, ...payload });
     await reloadEntries();
     state.selectedIds.clear();
     updateBulkCount();
-    showToast(`Updated ${count} ${count === 1 ? 'entry' : 'entries'}.`, {
+    if (!updated) { showToast('0 updated: those entries no longer exist.'); return; }
+    showToast(`Updated ${updated} ${updated === 1 ? 'entry' : 'entries'}.`, {
       duration: 5000,
       actionLabel: 'Undo',
       onAction: async () => {
