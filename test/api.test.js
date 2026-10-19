@@ -514,3 +514,33 @@ test('reset wipes entries and screenshot files', async () => {
   assert.deepEqual((await call('GET', '/api/entries')).body, []);
   assert.equal(fs.existsSync(path.join(UPLOADS, shot)), false);
 });
+
+test('board description, emoji, color, pin and ordering', async () => {
+  const a = (await call('POST', '/api/boards', { name: 'OrdA' })).body;
+  const b = (await call('POST', '/api/boards', { name: 'OrdB' })).body;
+  const upd = await call('PUT', `/api/boards/${a.id}`, { description: ' Due Nov 3 ', emoji: '🎨', color: '#e5484d', pinned: true });
+  assert.equal(upd.body.description, 'Due Nov 3');
+  assert.equal(upd.body.pinned, true);
+  assert.equal((await call('PUT', `/api/boards/${a.id}`, { name: '  ' })).status, 400);
+  assert.equal((await call('PUT', `/api/boards/${a.id}`, { color: 'red' })).status, 400);
+
+  await call('PUT', '/api/boards/order', { ids: [b.id, a.id] });
+  const ids = (await call('GET', '/api/boards')).body.map(x => x.id);
+  assert.ok(ids.indexOf(b.id) < ids.indexOf(a.id));
+
+  const e1 = await create('https://ord1.example');
+  const e2 = await create('https://ord2.example');
+  const order = await call('PUT', `/api/boards/${a.id}/order`, { ids: [e2.id, 'ghost', e1.id] });
+  assert.deepEqual(order.body.order, [e2.id, e1.id]);
+
+  for (const id of [a.id, b.id]) await call('DELETE', `/api/boards/${id}`);
+  for (const e of [e1, e2]) await call('DELETE', `/api/entries/${e.id}`);
+});
+
+test('editing an entry sets updated_at; favoriting does not', async () => {
+  const e = await create('https://upd.example');
+  assert.equal(e.updated_at, undefined);
+  assert.equal((await call('PUT', `/api/entries/${e.id}`, { favorite: true })).body.updated_at, undefined);
+  assert.ok((await call('PUT', `/api/entries/${e.id}`, { note: 'x' })).body.updated_at);
+  await call('DELETE', `/api/entries/${e.id}`);
+});

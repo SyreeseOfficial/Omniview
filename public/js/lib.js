@@ -46,3 +46,32 @@ export function inAddedRange(iso, { added, from, to }, now = new Date()) {
   if (added === 'week') start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
   return t >= start;
 }
+
+// "3 days ago", "just now"; `now` is injectable for tests.
+export function timeAgo(iso, now = new Date()) {
+  const s = Math.round((now - new Date(iso)) / 1000);
+  if (s < 60) return 'just now';
+  for (const [unit, secs] of [['year', 31536000], ['month', 2592000], ['week', 604800], ['day', 86400], ['hour', 3600], ['minute', 60]]) {
+    const n = Math.floor(s / secs);
+    if (n >= 1) return `${n} ${unit}${n === 1 ? '' : 's'} ago`;
+  }
+}
+
+// WCAG 2.x contrast ratio (1..21) between two #rrggbb colors.
+export function contrastRatio(a, b) {
+  const lum = hex => {
+    const [r, g, bl] = rgb(hex).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+  };
+  const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+// Highest WCAG level a ratio reaches for normal text, or null.
+export const contrastLevel = ratio => (ratio >= 7 ? 'AAA' : ratio >= 4.5 ? 'AA' : ratio >= 3 ? 'AA Large' : null);
+
+// Entries in a board's manual order; anything not in `order` keeps its relative position after them.
+export function orderEntries(entries, order) {
+  const rank = new Map(order.map((id, i) => [id, i]));
+  return [...entries].sort((a, b) => (rank.get(a.id) ?? order.length) - (rank.get(b.id) ?? order.length));
+}

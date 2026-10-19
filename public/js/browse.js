@@ -3,13 +3,13 @@
 
 import {
   state, SPACES, COLORS, PLACEHOLDER_SVG, OPEN_ICON, COPY_ICON, BOARD_ICON, byName, cleanUrl, titleOf, safeHref, thumbImg, faviconImg,
-  colorName, defaultFilters, brandPrice, spaceKey, priceOf, priceTotal
+  colorName, defaultFilters, brandPrice, spaceKey, priceOf, priceTotal, boardLabel
 } from './state.js';
 import { api } from './api.js';
 import { inAddedRange } from './lib.js';
 import { confirm_, toastSuccess, toastError, showToast } from './modals.js';
 import { openDetail } from './entry.js';
-import { removeEntryFromBoard } from './boards.js';
+import { removeEntryFromBoard, reorderInBoard, renderSidebarBoards } from './boards.js';
 import { switchSpace } from './main.js';
 
 const $ = id => document.getElementById(id);
@@ -286,7 +286,7 @@ export function renderBoardFilters() {
   const counts = facetCounts('board', e => e.boards);
   renderSingleFilter(
     'filter-boards-dd', 'filter-boards-list', 'filter-boards-label', 'All Boards',
-    state.boards.map(b => ({ value: b.id, label: b.name, count: counts.get(b.id) || 0 })),
+    state.boards.map(b => ({ value: b.id, label: boardLabel(b), count: counts.get(b.id) || 0 })),
     state.filters.board,
     v => { state.filters.board = v; renderBrowse(); }
   );
@@ -589,6 +589,7 @@ export function updateStats() {
   $('stats-line').textContent = [`${n} ${noun}${n === 1 ? (fashion ? '' : 'y') : (fashion ? 's' : 'ies')}`, priceTotal(state.entries)].filter(Boolean).join(' · ');
   $('nav-fav-count').textContent = state.entries.filter(e => e.favorite).length || '';
   $('nav-boards-count').textContent = state.boards.length || '';
+  renderSidebarBoards();
 }
 
 // ═══════════════════════════════════════════ LAYOUT SWITCH ══
@@ -707,7 +708,7 @@ function openBoardMenu(id, anchor) {
       const item = document.createElement('button');
       item.type = 'button';
       item.className = 'filter-option' + (on ? ' selected' : '');
-      item.textContent = `${on ? '✓ ' : ''}${b.name}`;
+      item.textContent = `${on ? '✓ ' : ''}${boardLabel(b)}`;
       item.addEventListener('click', async e => {
         e.stopPropagation();
         try {
@@ -752,6 +753,8 @@ function onItemClick(e, el, entry, clickOpensDetail) {
   if (clickOpensDetail) openDetail(entry.id);
 }
 
+let draggedEntryId = null; // entry being dragged inside a board
+
 function createCard(entry, clickOpensDetail, boardId = null) {
   const card = document.createElement('div');
   card.className = 'entry-card';
@@ -794,11 +797,19 @@ function createCard(entry, clickOpensDetail, boardId = null) {
     });
     overlay.appendChild(removeBtn);
 
-    // Drag onto another board's drop target (see boards.js)
+    // Drag onto another board's drop target (see boards.js), or onto a sibling card to reorder.
     card.draggable = true;
     card.addEventListener('dragstart', e => {
       e.dataTransfer.setData('text/plain', entry.id);
       e.dataTransfer.effectAllowed = 'copyMove';
+      draggedEntryId = entry.id;
+    });
+    card.addEventListener('dragend', () => { draggedEntryId = null; });
+    card.addEventListener('dragover', e => { if (draggedEntryId && draggedEntryId !== entry.id) e.preventDefault(); });
+    card.addEventListener('drop', e => {
+      if (!draggedEntryId || draggedEntryId === entry.id) return;
+      e.preventDefault();
+      reorderInBoard(boardId, draggedEntryId, entry.id);
     });
   }
   thumb.appendChild(overlay);
@@ -939,8 +950,8 @@ const BULK_VALUES = {
   tag: () => state.tags.map(t => ({ value: t, label: t })),
   untag: () => state.tags.map(t => ({ value: t, label: t })),
   setType: () => [{ value: NO_TYPE, label: '— None —' }, ...state.types.map(t => ({ value: t, label: t }))],
-  addToBoard: () => state.boards.map(b => ({ value: b.id, label: b.name })),
-  removeFromBoard: () => state.boards.map(b => ({ value: b.id, label: b.name }))
+  addToBoard: () => state.boards.map(b => ({ value: b.id, label: boardLabel(b) })),
+  removeFromBoard: () => state.boards.map(b => ({ value: b.id, label: boardLabel(b) }))
 };
 
 function fillBulkValue() {
@@ -965,6 +976,16 @@ function bulkPayload(action, value) {
   }
 }
 
+// The one entry field each non-delete bulk action changes (the field Undo restores).
+const UNDO_FIELD = { tag: 'style_tags', untag: 'style_tags', setType: 'type', addToBoard: 'boards', removeFromBoard: 'boards', favorite: 'favorite' };
+
+// The server may have registered new tags/types, so reload everything it owns.
+async function reloadEntries() {
+  [state.entries, state.tags, state.types] = await Promise.all([api.get('/api/entries'), api.get('/api/tags'), api.get('/api/types')]);
+  refreshViews();
+  renderBoardFilters();
+}
+
 export function setupBulk() {
   $('bulk-toggle').addEventListener('click', () => setBulkMode(!state.bulkMode));
   $('bulk-cancel').addEventListener('click', () => setBulkMode(false));
@@ -974,14 +995,26 @@ export function setupBulk() {
     if (state.selectedIds.size === 0) { toastError('Select some entries first.'); return; }
     const payload = bulkPayload($('bulk-action').value, $('bulk-value').value);
     if (!payload) { toastError('Choose an action and a value.'); return; }
-    const count = state.selectedIds.size;
-    await api.post('/api/entries/bulk', { ids: [...state.selectedIds], ...payload });
-    // The server may have registered new tags/types, so reload everything it owns.
-    [state.entries, state.tags, state.types] = await Promise.all([api.get('/api/entries'), api.get('/api/tags'), api.get('/api/types')]);
+    const ids = [...state.selectedIds];
+    const count = ids.length;
+    // What each entry looked like, so Undo can put the one affected field back.
+    const field = UNDO_FIELD[payload.action];
+    const before = state.entries.filter(e => state.selectedIds.has(e.id)).map(e => ({ id: e.id, value: structuredClone(e[field]) }));
+    const space = state.space;
+    await api.post('/api/entries/bulk', { ids, ...payload });
+    await reloadEntries();
     state.selectedIds.clear();
     updateBulkCount();
-    renderBrowse();
-    toastSuccess(`Updated ${count} ${count === 1 ? 'entry' : 'entries'}.`);
+    showToast(`Updated ${count} ${count === 1 ? 'entry' : 'entries'}.`, {
+      duration: 5000,
+      actionLabel: 'Undo',
+      onAction: async () => {
+        try {
+          await Promise.all(before.map(b => api.put(`/api/entries/${b.id}`, { [field]: b.value }, space)));
+        } catch (err) { toastError(`Undo failed: ${err.message}`); }
+        if (state.space === space) await reloadEntries();
+      }
+    });
   });
 
   $('bulk-delete').addEventListener('click', () => {

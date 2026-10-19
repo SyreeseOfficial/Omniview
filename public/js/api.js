@@ -22,7 +22,7 @@ async function request(method, path, body, space = state.space) {
 export const api = {
   get: (path, space) => request('GET', path, undefined, space),
   post: (path, body = {}, space) => request('POST', path, body, space),
-  put: (path, body) => request('PUT', path, body),
+  put: (path, body, space) => request('PUT', path, body, space),
   del: path => request('DELETE', path),
   uploadScreenshot(entryId, file) {
     const fd = new FormData();

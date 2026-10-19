@@ -33,3 +33,32 @@ test('inAddedRange: week starts Monday, month starts the 1st, custom is inclusiv
   assert.ok(!inAddedRange(at(9, 6, 1), { added: 'custom', from: '2026-10-05', to: '2026-10-05' }, now));
   assert.ok(inAddedRange(at(0, 1), { added: 'custom', from: '', to: '2026-10-05' }, now));
 });
+
+test('timeAgo picks the largest whole unit', async () => {
+  const { timeAgo } = await import('../public/js/lib.js');
+  const now = new Date('2026-10-18T12:00:00Z');
+  const ago = ms => new Date(now - ms).toISOString();
+  assert.equal(timeAgo(ago(20e3), now), 'just now');
+  assert.equal(timeAgo(ago(60e3), now), '1 minute ago');
+  assert.equal(timeAgo(ago(3 * 86400e3), now), '3 days ago');
+  assert.equal(timeAgo(ago(14 * 86400e3), now), '2 weeks ago');
+  assert.equal(timeAgo(ago(400 * 86400e3), now), '1 year ago');
+});
+
+test('contrastRatio matches the WCAG reference values', async () => {
+  const { contrastRatio, contrastLevel } = await import('../public/js/lib.js');
+  assert.equal(contrastRatio('#000000', '#ffffff').toFixed(1), '21.0');
+  assert.equal(contrastRatio('#777777', '#777777'), 1);
+  assert.equal(contrastRatio('#767676', '#ffffff').toFixed(2), '4.54'); // the classic AA gray
+  assert.equal(contrastLevel(21), 'AAA');
+  assert.equal(contrastLevel(4.54), 'AA');
+  assert.equal(contrastLevel(3.2), 'AA Large');
+  assert.equal(contrastLevel(2), null);
+});
+
+test('orderEntries puts the manual order first and keeps the rest in place', async () => {
+  const { orderEntries } = await import('../public/js/lib.js');
+  const list = ['a', 'b', 'c', 'd'].map(id => ({ id }));
+  assert.deepEqual(orderEntries(list, ['c', 'ghost', 'a']).map(e => e.id), ['c', 'a', 'b', 'd']);
+  assert.deepEqual(orderEntries(list, []).map(e => e.id), ['a', 'b', 'c', 'd']);
+});

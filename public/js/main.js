@@ -10,9 +10,9 @@ import { setupCombos } from './options.js';
 import {
   loadPersistedFilters, setupSearch, setupFilters, setupLayoutSwitch, setupBulk, setBulkMode, renderBrowse, renderFavorites, updateStats
 } from './browse.js';
-import { setupBoards, renderBoards, closeBoardPicker } from './boards.js';
+import { setupBoards, renderBoards, closeBoardPicker, closeBoardEdit } from './boards.js';
 import {
-  setupAddForm, setupDetailModal, openAddForm, isFormDirty, clearFormSnapshot, closeDetail,
+  setupAddForm, setupDetailModal, openAddForm, isFormDirty, clearFormSnapshot, requestCloseDetail,
   addPendingFiles, applyDetailScreenshots, pasteUrlIntoForm, stepDetail, stepShot
 } from './entry.js';
 import { setupSettings, renderSettings } from './settings.js';
@@ -66,7 +66,7 @@ export async function loadAll() {
 
 // ═══════════════════════════════════════════ PASTE / DROP IMAGE ══
 const isImage = f => f.type && f.type.startsWith('image/');
-const anyDialogOpen = () => ['confirm-overlay', 'prompt-overlay', 'board-picker-overlay', 'lightbox-overlay'].some(isOpen);
+const anyDialogOpen = () => ['confirm-overlay', 'prompt-overlay', 'board-picker-overlay', 'board-edit-overlay', 'lightbox-overlay'].some(isOpen);
 
 // Hands images to whatever is showing: the open entry (as extra screenshots),
 // otherwise a new entry in the Add form.
@@ -117,15 +117,16 @@ function setupNav() {
   });
 }
 
-export function navigate(view) {
+// `then` runs once the view has switched (after the discard prompt, if there was one).
+export function navigate(view, then) {
   if (isFormDirty()) {
-    confirm_('Discard unsaved changes to this entry?', () => { clearFormSnapshot(); doNavigate(view); }, 'Discard');
+    confirm_('Discard unsaved changes to this entry?', () => { clearFormSnapshot(); doNavigate(view, then); }, 'Discard');
     return;
   }
-  doNavigate(view);
+  doNavigate(view, then);
 }
 
-function doNavigate(view) {
+function doNavigate(view, then) {
   state.view = view;
   // Hide all views
   document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
@@ -140,6 +141,7 @@ function doNavigate(view) {
   if (view === 'favorites') renderFavorites();
   if (view === 'add') openAddForm();
   if (view === 'settings') renderSettings();
+  if (then) then();
 }
 
 // ═══════════════════════════════════════════ SPACES (UI / Fashion) ══
@@ -248,7 +250,8 @@ function setupKeyboardShortcuts() {
       if (isOpen('lightbox-overlay')) return closeLightbox();
       if (isOpen('confirm-overlay')) return $('confirm-cancel').click();
       if (isOpen('prompt-overlay')) return $('prompt-cancel').click();
-      if (isOpen('detail-overlay')) return closeDetail();
+      if (isOpen('detail-overlay')) return requestCloseDetail();
+      if (isOpen('board-edit-overlay')) return closeBoardEdit();
       if (isOpen('board-picker-overlay')) return closeBoardPicker();
       return;
     }

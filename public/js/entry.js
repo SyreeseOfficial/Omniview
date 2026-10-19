@@ -1,8 +1,8 @@
 // The Add Entry form (auto-fill, duplicate check, screenshot queue) and the
 // entry detail modal (screenshot carousel, palette, prev/next, save).
 
-import { state, safeHref, isHttpUrl, faviconImg, colorName, thumbImg, titleOf, PLACEHOLDER_SVG, COLOR_NAMES } from './state.js';
-import { moreLike } from './lib.js';
+import { state, boardLabel, safeHref, isHttpUrl, faviconImg, colorName, thumbImg, titleOf, PLACEHOLDER_SVG, COLOR_NAMES } from './state.js';
+import { moreLike, timeAgo, contrastRatio, contrastLevel } from './lib.js';
 import { guessFashionFields, guessFoundVia, applyCorrections, recordCorrections } from './autofill.js';
 import { api } from './api.js';
 import {
@@ -444,8 +444,9 @@ function renderBoardChips(wrap, selected, emptyText) {
   state.boards.forEach(b => {
     const chip = document.createElement('button');
     chip.type = 'button';
-    chip.className = 'board-chip-toggle' + (selected.has(b.id) ? ' selected' : '');
-    chip.textContent = b.name;
+    chip.className = 'board-chip-toggle' + (selected.has(b.id) ? ' selected' : '') + (b.color ? ' has-color' : '');
+    chip.style.setProperty('--board-color', b.color || 'transparent');
+    chip.textContent = boardLabel(b);
     chip.setAttribute('aria-pressed', String(selected.has(b.id)));
     chip.addEventListener('click', () => {
       if (selected.has(b.id)) selected.delete(b.id);
@@ -515,6 +516,22 @@ export function stepShot(delta) {
   if (isOpen('lightbox-overlay')) setLightboxSrc(`/uploads/${shots[state.detailShot]}`);
 }
 
+const exactDate = iso => new Date(iso).toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' });
+
+// "3 days ago" (exact date on hover), plus "edited 2 hours ago" once the entry has been changed.
+function renderDetailDates(entry) {
+  const wrap = $('detail-date');
+  wrap.textContent = '';
+  const part = (text, iso) => {
+    const el = document.createElement('span');
+    el.textContent = text;
+    el.title = exactDate(iso);
+    return el;
+  };
+  wrap.appendChild(part(timeAgo(entry.date_added), entry.date_added));
+  if (entry.updated_at) wrap.append(' · ', part(`edited ${timeAgo(entry.updated_at)}`, entry.updated_at));
+}
+
 function renderPalette(entry) {
   const wrap = $('detail-palette');
   wrap.innerHTML = '';
@@ -531,6 +548,14 @@ function renderPalette(entry) {
     });
     wrap.appendChild(sw);
   });
+  if (entry.palette.length > 1) {
+    const ratio = contrastRatio(entry.palette[0], entry.palette[1]);
+    const badge = document.createElement('span');
+    badge.className = 'contrast-badge' + (contrastLevel(ratio) ? '' : ' fail');
+    badge.textContent = `${ratio.toFixed(1)}:1 ${contrastLevel(ratio) || 'Fails AA'}`;
+    badge.title = 'WCAG contrast between the two most dominant colors (4.5 passes AA for body text, 7 passes AAA)';
+    wrap.appendChild(badge);
+  }
 }
 
 export async function applyDetailScreenshots(files) {
@@ -552,9 +577,9 @@ export async function applyDetailScreenshots(files) {
 }
 
 export function setupDetailModal() {
-  $('detail-close').addEventListener('click', closeDetail);
+  $('detail-close').addEventListener('click', requestCloseDetail);
   $('detail-overlay').addEventListener('click', e => {
-    if (e.target === $('detail-overlay')) closeDetail();
+    if (e.target === $('detail-overlay')) requestCloseDetail();
   });
   $('detail-prev').addEventListener('click', () => stepDetail(-1));
   $('detail-next').addEventListener('click', () => stepDetail(1));
@@ -667,7 +692,7 @@ function loadDetail(entry) {
   setCombo('detail-color', entry.color || '');
   setCombo('detail-found-via', entry.found_via);
   $('detail-note').value = entry.note;
-  $('detail-date').textContent = new Date(entry.date_added).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  renderDetailDates(entry);
 
   state.detailShot = 0;
   renderDetailShots();
@@ -714,6 +739,12 @@ function renderSimilar(entry) {
     btn.addEventListener('click', () => goToEntry(e));
     row.appendChild(btn);
   });
+}
+
+// Close button, backdrop click and Esc: asks first when the form holds unsaved edits.
+export function requestCloseDetail() {
+  if (state.detailEntry && detailSnapshot() !== detailBaseline) confirm_('Discard unsaved changes to this entry?', closeDetail, 'Discard');
+  else closeDetail();
 }
 
 // Hands focus back to the card of the entry you were last on, so keyboard users land where they were.

@@ -50,6 +50,7 @@
       <span class="nav-label">Boards</span>
       <span class="nav-badge" id="nav-boards-count"></span>
     </a>
+    <div class="sidebar-boards" id="sidebar-boards"></div>
     <a class="nav-item" data-view="favorites" href="#" title="Favorites">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13.5l-5.5-5a3.18 3.18 0 010-4.5 3.18 3.18 0 014.5 0L8 5l1-1a3.18 3.18 0 014.5 0 3.18 3.18 0 010 4.5L8 13.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
       <span class="nav-label">Favorites</span>
@@ -297,10 +298,12 @@
         <button class="btn-ghost btn-back" id="board-back">← All Boards</button>
         <div style="display:flex;gap:.5rem;align-items:center">
           <button class="btn-sm" id="add-to-board-btn">+ Add</button>
-          <button class="btn-sm" id="rename-board-btn">Rename</button>
+          <button class="btn-sm" id="pin-board-btn" aria-pressed="false">Pin</button>
+          <button class="btn-sm" id="edit-board-btn">Edit</button>
           <button class="btn-sm btn-danger" id="delete-board-btn">Delete Board</button>
         </div>
       </div>
+      <p class="board-desc" id="board-desc" style="display:none"></p>
       <div class="board-total fashion-only" id="board-total"></div>
       <div class="board-drop-targets" id="board-drop-targets" style="display:none"></div>
       <div class="entry-grid" id="board-entry-grid"></div>
@@ -722,11 +725,30 @@
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════ BOARD EDIT MODAL ══ -->
+<div class="modal-overlay" id="board-edit-overlay" style="display:none">
+  <div class="modal confirm-modal" role="dialog" aria-modal="true" aria-labelledby="board-edit-title">
+    <form id="board-edit-form">
+      <h3 id="board-edit-title">Edit board</h3>
+      <div class="board-edit-row">
+        <input type="text" id="board-edit-emoji" class="board-edit-emoji" maxlength="8" placeholder="🙂" aria-label="Emoji" autocomplete="off">
+        <input type="text" id="board-edit-name" class="prompt-input" maxlength="100" placeholder="Name" aria-label="Board name" required autocomplete="off">
+      </div>
+      <div class="chip-row board-edit-colors" id="board-edit-colors" role="group" aria-label="Accent color"></div>
+      <textarea id="board-edit-desc" class="detail-textarea" rows="4" maxlength="1000" placeholder="Notes: client, deadline, what this board is for…" aria-label="Description"></textarea>
+      <div class="confirm-actions">
+        <button type="button" class="btn-ghost" id="board-edit-cancel">Cancel</button>
+        <button type="submit" class="btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- ═══════════════════════════════════════════ LIGHTBOX ══ -->
 <div class="modal-overlay lightbox-overlay" id="lightbox-overlay" style="display:none">
   <div class="modal lightbox" role="dialog" aria-modal="true" aria-label="Screenshot">
     <button class="modal-close" id="lightbox-close" aria-label="Close">✕</button>
-    <img id="lightbox-img" alt="" title="Click to toggle actual size">
+    <img id="lightbox-img" alt="" title="Scroll to zoom, drag to pan, click to toggle actual size">
   </div>
 </div>
 

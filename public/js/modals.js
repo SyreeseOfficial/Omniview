@@ -136,11 +136,58 @@ export function prompt_(title, defaultValue, cb) {
 }
 
 // ─── Lightbox ────────────────────────────────────────────────────────────────
-// Full-size screenshot; click the image to toggle between fit-to-screen and actual size.
+// Full-size screenshot. Wheel zooms around the cursor, drag pans, click toggles
+// between fit-to-screen and actual size.
+const MAX_ZOOM = 8;
+let zoom = { scale: 1, x: 0, y: 0 };
+
+function applyZoom() {
+  const img = document.getElementById('lightbox-img');
+  img.style.transform = zoom.scale === 1 ? '' : `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.scale})`;
+  img.classList.toggle('zoomed', zoom.scale > 1);
+}
+
+// Zooms by `factor` keeping the point under (px, py) fixed on screen.
+function zoomAt(factor, px, py) {
+  const img = document.getElementById('lightbox-img');
+  const r = img.getBoundingClientRect();
+  const scale = Math.min(MAX_ZOOM, Math.max(1, zoom.scale * factor));
+  const k = scale / zoom.scale;
+  zoom = scale === 1 ? { scale, x: 0, y: 0 } : { scale, x: zoom.x + (px - (r.left + r.width / 2)) * (1 - k), y: zoom.y + (py - (r.top + r.height / 2)) * (1 - k) };
+  applyZoom();
+}
+
 export function setupLightbox() {
   const overlay = document.getElementById('lightbox-overlay');
   const img = document.getElementById('lightbox-img');
-  img.addEventListener('click', () => img.classList.toggle('zoomed'));
+  let drag = null;
+
+  img.addEventListener('wheel', e => {
+    e.preventDefault();
+    zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
+  }, { passive: false });
+  img.addEventListener('pointerdown', e => {
+    drag = { x: e.clientX, y: e.clientY, ox: zoom.x, oy: zoom.y, moved: false };
+    img.setPointerCapture(e.pointerId);
+  });
+  img.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (Math.hypot(dx, dy) > 4) drag.moved = true;
+    if (drag.moved && zoom.scale > 1) { zoom.x = drag.ox + dx; zoom.y = drag.oy + dy; applyZoom(); }
+  });
+  img.addEventListener('pointerup', () => {
+    if (!drag) return;
+    const wasDrag = drag.moved;
+    drag = null;
+    if (wasDrag) return;
+    // Plain click: back to fit, or in to actual size (at least 2x) around the image center.
+    if (zoom.scale > 1) zoomAt(1 / zoom.scale, 0, 0);
+    else {
+      const r = img.getBoundingClientRect();
+      zoomAt(Math.max(2, img.naturalWidth / img.clientWidth), r.left + r.width / 2, r.top + r.height / 2);
+    }
+  });
   document.getElementById('lightbox-close').addEventListener('click', closeLightbox);
   overlay.addEventListener('click', e => { if (e.target === overlay) closeLightbox(); });
 }
@@ -151,9 +198,9 @@ export function openLightbox(src) {
 }
 
 export function setLightboxSrc(src) {
-  const img = document.getElementById('lightbox-img');
-  img.classList.remove('zoomed');
-  img.src = src;
+  zoom = { scale: 1, x: 0, y: 0 };
+  applyZoom();
+  document.getElementById('lightbox-img').src = src;
 }
 
 export function closeLightbox() { closeModalOverlay('lightbox-overlay'); }

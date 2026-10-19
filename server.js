@@ -101,6 +101,10 @@ function loadDB(space) {
   if (!lib.data.types) lib.data.types = [...lib.defaults.types];
   if (!lib.data.foundVia) lib.data.foundVia = [...lib.defaults.foundVia];
   lib.data.entries.forEach(e => normalizeEntry(e, space));
+  lib.data.boards.forEach(b => {
+    b.description ??= ''; b.emoji ??= ''; b.color ??= ''; b.pinned = !!b.pinned;
+    if (!Array.isArray(b.order)) b.order = [];
+  });
 }
 
 function readDB() {
@@ -472,6 +476,8 @@ app.put('/api/entries/:id', (req, res) => {
     entry.palette = [];
   }
   Object.assign(entry, fields);
+  // Favoriting and board moves aren't "edits" to the entry itself.
+  if (Object.keys(fields).some(k => k !== 'favorite' && k !== 'boards')) entry.updated_at = new Date().toISOString();
   writeDB(db);
   res.json(entry);
 });
@@ -563,7 +569,11 @@ app.post('/api/entries/bulk', (req, res) => {
   }
 
   const wanted = new Set(ids);
-  db.entries.filter(e => wanted.has(e.id)).forEach(apply);
+  const now = new Date().toISOString();
+  db.entries.filter(e => wanted.has(e.id)).forEach(e => {
+    apply(e);
+    if (action !== 'delete' && action !== 'favorite' && !/Board$/.test(action)) e.updated_at = now;
+  });
   writeDB(db);
   res.json({ ok: true });
 });
@@ -727,25 +737,65 @@ app.get('/api/boards', (req, res) => {
   res.json(db.boards.map(b => ({ ...b, count: counts[b.id] || 0 })));
 });
 
+// Writable board fields; only keys present in `body` are returned, like cleanEntryFields.
+function cleanBoardFields(body) {
+  const out = {};
+  const has = k => body[k] !== undefined;
+  if (has('name')) {
+    out.name = cleanString(body.name, 'name', 100);
+    if (!out.name) throw httpError(400, 'name required');
+  }
+  if (has('description')) out.description = cleanString(body.description, 'description', 1000);
+  if (has('emoji')) out.emoji = cleanString(body.emoji, 'emoji', 16);
+  if (has('color')) {
+    out.color = cleanString(body.color, 'color', 7);
+    if (out.color && !/^#[0-9a-f]{6}$/i.test(out.color)) throw httpError(400, 'color must be a #rrggbb hex value');
+  }
+  if (has('pinned')) {
+    if (typeof body.pinned !== 'boolean') throw httpError(400, 'pinned must be a boolean');
+    out.pinned = body.pinned;
+  }
+  return out;
+}
+
 app.post('/api/boards', (req, res) => {
-  const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
-  if (!name) return res.status(400).json({ error: 'name required' });
-  if (name.length > 100) return res.status(400).json({ error: 'name is too long' });
+  const fields = cleanBoardFields({ ...req.body, name: req.body.name ?? '' });
   const db = readDB();
-  const board = { id: uuidv4(), name, created: new Date().toISOString() };
+  const board = { id: uuidv4(), description: '', emoji: '', color: '', pinned: false, order: [], created: new Date().toISOString(), ...fields };
   db.boards.push(board);
   writeDB(db);
   res.status(201).json(board);
 });
 
+// Drag-to-reorder: `ids` is the full new order. Registered before /:id so "order" isn't read as an id.
+app.put('/api/boards/order', (req, res) => {
+  const db = readDB();
+  const ids = cleanList(req.body.ids, 'ids', 100);
+  const byId = new Map(db.boards.map(b => [b.id, b]));
+  const listed = ids.filter(id => byId.has(id));
+  db.boards = [...listed.map(id => byId.get(id)), ...db.boards.filter(b => !listed.includes(b.id))];
+  writeDB(db);
+  res.json({ ok: true });
+});
+
+// Manual order of the entries inside one board (ids of entries not in the list sort after it).
+app.put('/api/boards/:id/order', (req, res) => {
+  const db = readDB();
+  const board = db.boards.find(b => b.id === req.params.id);
+  if (!board) return res.status(404).json({ error: 'Not found' });
+  const known = new Set(db.entries.map(e => e.id));
+  board.order = cleanList(req.body.ids, 'ids', 100).filter(id => known.has(id));
+  writeDB(db);
+  res.json(board);
+});
+
 app.put('/api/boards/:id', (req, res) => {
   const db = readDB();
-  const idx = db.boards.findIndex(b => b.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Not found' });
-  const name = typeof req.body.name === 'string' ? req.body.name.trim().slice(0, 100) : '';
-  if (name) db.boards[idx].name = name;
+  const board = db.boards.find(b => b.id === req.params.id);
+  if (!board) return res.status(404).json({ error: 'Not found' });
+  Object.assign(board, cleanBoardFields(req.body));
   writeDB(db);
-  res.json(db.boards[idx]);
+  res.json(board);
 });
 
 app.delete('/api/boards/:id', (req, res) => {

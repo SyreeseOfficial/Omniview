@@ -24,30 +24,11 @@ All items from this section are under **Completed** or **Skipped** at the bottom
 
 ## 4. Entry detail & editing
 
-- [ ] **[H]** Guard the detail modal against unsaved edits. Clicking the overlay (`entry.js:451`) or pressing Esc calls `closeDetail()` with no dirty check, so typed notes are dropped silently. The Add form already has `isFormDirty`.
-- [ ] **[M]** Undo for non-delete bulk actions (tag, untag, set type, add to board, favorite). Only deletes get the 5-second Undo toast.
-- [ ] **[M]** Per-screenshot captions ("Hero", "Pricing", "Mobile nav") shown in the carousel and lightbox.
-- [ ] **[M]** "Copy image" and "Download original" buttons in the lightbox.
-- [ ] **[M]** Copy-as-Markdown-link (`[Title](url)`) and "Copy URL" buttons in the detail view.
-- [ ] **[M]** Move an entry to the other library (misfiled UI ↔ Fashion): `POST /api/entries/:id/move`, re-registering tags/types with `canon`, uploads are shared so no file moves. Also available as a bulk action.
-- [ ] **[L]** Real zoom in the lightbox: wheel zoom + drag-pan. It toggles a `zoomed` class (`modals.js:143`), which is fine for desktop shots but awkward for tall mobile ones.
-- [ ] **[L]** Render URLs in notes as links (notes are a plain `textarea`, 10,000 chars).
-- [ ] **[L]** Show "added 3 days ago" with the exact date on hover, plus the last-edited time once `updated_at` exists.
-- [ ] **[L]** Edit the title inline on the detail header (double-click) without opening the full form.
-- [ ] **[L]** Contrast badge for the cover palette: WCAG ratio between the two most dominant colors, so "does this dark theme actually pass" is visible.
-- [ ] **[L]** Copy the palette in one go: `--c1: #...;` CSS variables, Tailwind config snippet, or JSON. Single-swatch copy exists; the whole set doesn't.
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ## 5. Boards
 
-- [ ] **[M]** Board description/notes ("Client X rebrand, due Nov 3") shown at the top of the board.
-- [ ] **[M]** Choose a board's cover image instead of the auto collage.
-- [ ] **[M]** Reorder boards (drag) and pin favorite boards in the sidebar for one-click access.
-- [ ] **[M]** Manual ordering of entries inside a board (drag to arrange) for mood-board feel.
-- [ ] **[L]** Duplicate a board (start the next project from the last one).
-- [ ] **[L]** Archive boards: hide finished projects from the picker without deleting.
-- [ ] **[L]** Board "contact sheet" export as PDF or one-page HTML: thumbnails, titles, URLs, palettes, notes. Different from FINDINGS' static-HTML share: this one is for printing / attaching to a brief.
-- [ ] **[L]** Board accent color or emoji for quick scanning in the picker and sidebar.
-- [ ] **[L]** "Add to board" from the card hover menu without opening the detail modal.
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ## 6. Tags & managed lists
 
@@ -255,6 +236,16 @@ Already listed there, but I'd move them up:
 - [x] **[L]** Keep scroll position and focused card when the detail modal closes and `renderBrowse` rebuilds the grid; verify and fix if it jumps to top.
 - [x] **[L]** Optional "search both libraries" toggle that appends a "Also in Fashion (3)" section. `FASHION_SPACE.md` lists this as a known limit.
 - [x] **[L]** Highlight cards that have no real screenshot differently from ones with an `og:image` stand-in.
+- [x] **[H]** Guard the detail modal against unsaved edits. Clicking the overlay (`entry.js:451`) or pressing Esc calls `closeDetail()` with no dirty check, so typed notes are dropped silently. The Add form already has `isFormDirty`.
+- [x] **[M]** Undo for non-delete bulk actions (tag, untag, set type, add to board, favorite). Only deletes get the 5-second Undo toast.
+- [x] **[L]** Real zoom in the lightbox: wheel zoom + drag-pan. It toggles a `zoomed` class (`modals.js:143`), which is fine for desktop shots but awkward for tall mobile ones.
+- [x] **[L]** Show "added 3 days ago" with the exact date on hover, plus the last-edited time once `updated_at` exists.
+- [x] **[L]** Contrast badge for the cover palette: WCAG ratio between the two most dominant colors, so "does this dark theme actually pass" is visible.
+- [x] **[M]** Board description/notes ("Client X rebrand, due Nov 3") shown at the top of the board.
+- [x] **[M]** Reorder boards (drag) and pin favorite boards in the sidebar for one-click access.
+- [x] **[M]** Manual ordering of entries inside a board (drag to arrange) for mood-board feel.
+- [x] **[L]** Board accent color or emoji for quick scanning in the picker and sidebar.
+- [x] **[L]** "Add to board" from the card hover menu without opening the detail modal.
 
 ## Skipped
 
@@ -279,3 +270,14 @@ Parked for now, not rejected.
 - [ ] **[H]** "Needs attention" smart filter: no tags, no note, no type, no real screenshot. Real data: 12/12 fashion entries have no tags and 29/30 UI entries have no note, so a triage list would clear a backlog in minutes.
 - [ ] **[L]** Right-click context menu on cards (open, favorite, add to board, copy link, delete).
 - [ ] **[L]** Daily pick: a single "Revisit this" card on an empty search that changes once a day.
+- [ ] **[M]** Per-screenshot captions ("Hero", "Pricing", "Mobile nav") shown in the carousel and lightbox.
+- [ ] **[M]** "Copy image" and "Download original" buttons in the lightbox.
+- [ ] **[M]** Copy-as-Markdown-link (`[Title](url)`) and "Copy URL" buttons in the detail view.
+- [ ] **[M]** Move an entry to the other library (misfiled UI ↔ Fashion): `POST /api/entries/:id/move`, re-registering tags/types with `canon`, uploads are shared so no file moves. Also available as a bulk action.
+- [ ] **[L]** Render URLs in notes as links (notes are a plain `textarea`, 10,000 chars).
+- [ ] **[L]** Edit the title inline on the detail header (double-click) without opening the full form.
+- [ ] **[L]** Copy the palette in one go: `--c1: #...;` CSS variables, Tailwind config snippet, or JSON. Single-swatch copy exists; the whole set doesn't.
+- [ ] **[M]** Choose a board's cover image instead of the auto collage.
+- [ ] **[L]** Duplicate a board (start the next project from the last one).
+- [ ] **[L]** Archive boards: hide finished projects from the picker without deleting.
+- [ ] **[L]** Board "contact sheet" export as PDF or one-page HTML: thumbnails, titles, URLs, palettes, notes. Different from FINDINGS' static-HTML share: this one is for printing / attaching to a brief.

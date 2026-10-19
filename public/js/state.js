@@ -124,6 +124,9 @@ export const priceTotal = entries => state.space === 'fashion'
 // Per-space localStorage key, so each library remembers its own filters and recents.
 export const spaceKey = base => (state.space === 'ui' ? base : `${base}-${state.space}`);
 
+// A board's name with its emoji, when it has one.
+export const boardLabel = b => (b.emoji ? `${b.emoji} ` : '') + b.name;
+
 export const byName = (a, b) => a.localeCompare(b);
 
 // Small site icon from the page's <link rel="icon">. Hidden if it fails to load.
