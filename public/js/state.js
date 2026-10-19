@@ -1,5 +1,8 @@
 // Shared app state, constants, and small pure helpers.
 
+import { priceOf, isBought, formatTotal } from './lib.js';
+export { priceOf, isBought };
+
 // Separate libraries on one server ('ui' design inspiration, 'fashion' wishlist, and
 // whatever else server.js defines). The server picks one per request from the X-Space
 // header (api.js). name → label; replaced with the server's list at boot (loadSpaces).
@@ -113,19 +116,8 @@ export function titleOf(e) { return e.title || cleanUrl(e.url); }
 // "Acme · $120 (was $150)" under a fashion entry's name (any part may be missing).
 export const brandPrice = e => [e.brand, e.price && (e.price_was && e.price_was !== e.price ? `${e.price} (was ${e.price_was})` : e.price)].filter(Boolean).join(' · ');
 
-// Bought via the flag, or the older "bought" tag convention.
-export const isBought = e => e.bought || e.style_tags.some(t => t.toLowerCase() === 'bought');
-
-// The number in a free-text price ("160", "$1,299.50", "EUR 120"), or null.
-export const priceOf = e => {
-  const n = parseFloat(String(e.price).replace(/,/g, '').match(/\d+(\.\d+)?/)?.[0]);
-  return Number.isNaN(n) ? null : n;
-};
-
-// "$1,420" for a fashion list, '' in the UI space. Assumes dollars (see priceOf).
-export const priceTotal = entries => state.space === 'fashion'
-  ? '$' + Math.round(entries.reduce((sum, e) => sum + (priceOf(e) ?? 0), 0)).toLocaleString()
-  : '';
+// "$1,420" for a fashion list, '' in the UI space. Prices in another currency are not added in.
+export const priceTotal = entries => (state.space === 'fashion' ? formatTotal(entries) : '');
 
 // Per-space localStorage key, so each library remembers its own filters and recents.
 export const spaceKey = base => (state.space === 'ui' ? base : `${base}-${state.space}`);

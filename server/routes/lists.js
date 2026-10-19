@@ -2,7 +2,7 @@
 
 // The managed lists (tags, types, found via) share one set of routes.
 const express = require('express');
-const { readDB, writeDB } = require('../store');
+const { SPACES, currentSpace, readDB, writeDB } = require('../store');
 const { httpError, cleanString, cleanList, canon } = require('../validate');
 
 const router = express.Router();
@@ -93,6 +93,22 @@ router.post('/api/tags/bulk-delete', (req, res) => {
   db.entries.forEach(e => { e.style_tags = e.style_tags.filter(t => !gone.has(t)); });
   writeDB(db);
   res.json({ tags: db.tags });
+});
+
+// Brand is free text on the entries (Fashion), not a managed list. Renaming one to a name that
+// already exists is a merge, so this also tidies "Bronson Mfg." / "Bronson MFG" variants.
+router.put('/api/brands/:name', (req, res) => {
+  const space = currentSpace();
+  if (!('brand' in SPACES[space].fields)) throw httpError(400, 'This library has no brand field');
+  const db = readDB();
+  const newName = cleanString(req.body.newName, 'newName', SPACES[space].fields.brand);
+  if (!newName) throw httpError(400, 'name required');
+  const hits = db.entries.filter(e => e.brand === req.params.name);
+  if (!hits.length) return res.status(404).json({ error: 'Brand not found' });
+  const now = new Date().toISOString();
+  hits.forEach(e => { e.brand = newName; e.updated_at = now; });
+  writeDB(db);
+  res.json({ updated: hits.length });
 });
 
 module.exports = router;

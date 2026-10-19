@@ -57,19 +57,6 @@ export function timeAgo(iso, now = new Date()) {
   }
 }
 
-// WCAG 2.x contrast ratio (1..21) between two #rrggbb colors.
-export function contrastRatio(a, b) {
-  const lum = hex => {
-    const [r, g, bl] = rgb(hex).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
-    return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
-  };
-  const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
-  return (hi + 0.05) / (lo + 0.05);
-}
-
-// Highest WCAG level a ratio reaches for normal text, or null.
-export const contrastLevel = ratio => (ratio >= 7 ? 'AAA' : ratio >= 4.5 ? 'AA' : ratio >= 3 ? 'AA Large' : null);
-
 // Entries in a board's manual order; anything not in `order` keeps its relative position after them.
 export function orderEntries(entries, order) {
   const rank = new Map(order.map((id, i) => [id, i]));
@@ -193,4 +180,79 @@ export function libraryStats(entries, now = new Date(), months = 12) {
     types: top(entries.map(e => e.type), 8),
     palette: palette.map(c => '#' + c.map(v => v.toString(16).padStart(2, '0')).join(''))
   };
+}
+
+// ─── Prices ──────────────────────────────────────────────────────────────────
+const NUMBER = '(\\d[\\d,]*(?:\\.\\d+)?)';
+const NEXT_TO_CURRENCY = new RegExp(`(?:[$£€¥₹]|\\b[A-Z]{3}\\b)\\s?${NUMBER}`);
+
+// The number in a free-text price. One written next to a currency symbol or code wins
+// ("2 for $100" is 100, "from $90 to $120" is 90); otherwise the first number.
+export function priceOf(entry) {
+  const text = String(entry.price ?? '');
+  const m = text.match(NEXT_TO_CURRENCY) || text.match(new RegExp(NUMBER));
+  const n = m ? parseFloat(m[1].replace(/,/g, '')) : NaN;
+  return Number.isFinite(n) ? n : null;
+}
+
+// 'USD' for a bare number or "$"; otherwise the symbol or code the price is written in ("EUR", "£").
+export function currencyOf(entry) {
+  const m = String(entry.price ?? '').match(/[£€¥₹]|\b[A-Z]{3}\b/);
+  return m ? m[0] : 'USD';
+}
+
+// Dollar total of the bare/USD prices, plus how many priced entries were left out for being in another currency.
+export function priceSum(entries) {
+  let total = 0;
+  let other = 0;
+  for (const e of entries) {
+    const n = priceOf(e);
+    if (n === null) continue;
+    if (currencyOf(e) === 'USD') total += n; else other++;
+  }
+  return { total, other };
+}
+
+export const money = n => '$' + Math.round(n).toLocaleString('en-US');
+
+// "$1,420" or "$1,420 + 1 in another currency".
+export function formatTotal(entries) {
+  const { total, other } = priceSum(entries);
+  return money(total) + (other ? ` + ${other} in another currency` : '');
+}
+
+// Bought via the flag, or the older "bought" tag convention.
+export const isBought = e => e.bought || e.style_tags.some(t => t.toLowerCase() === 'bought');
+
+// What the Fashion stats page shows. Averages and the spread use the wishlist's USD prices only.
+export function fashionStats(entries) {
+  const wanted = entries.filter(e => !isBought(e));
+  const bought = entries.filter(isBought);
+  const prices = wanted.filter(e => currencyOf(e) === 'USD').map(priceOf).filter(n => n !== null);
+  return {
+    wishlist: { count: wanted.length, ...priceSum(wanted) },
+    bought: { count: bought.length, ...priceSum(bought) },
+    average: prices.length ? prices.reduce((a, b) => a + b, 0) / prices.length : null,
+    min: prices.length ? Math.min(...prices) : null,
+    max: prices.length ? Math.max(...prices) : null,
+    brands: top(entries.map(e => e.brand), 10)
+  };
+}
+
+// ─── Fuzzy search ────────────────────────────────────────────────────────────
+// True when a and b are at most one edit apart (a character added, dropped or changed).
+export function withinOneEdit(a, b) {
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  if (a.length === b.length) return a.slice(i + 1) === b.slice(i + 1) || a === b;
+  const [short, long] = a.length < b.length ? [a, b] : [b, a];
+  return short.slice(i) === long.slice(i + 1);
+}
+
+// Fallback for a search that found nothing: every word typed (3+ letters) is within one edit of a word in the title or brand.
+export function fuzzyMatch(entry, q) {
+  const words = `${entry.title} ${entry.brand || ''}`.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  const typed = q.toLowerCase().split(/\s+/).filter(Boolean);
+  return typed.length > 0 && typed.every(t => t.length >= 3 && words.some(w => withinOneEdit(w, t)));
 }

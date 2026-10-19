@@ -31,15 +31,20 @@ const variants = (name, extra = []) => [name, name.replace(/s$/, ''), name + 's'
 // The one option whose name appears in the first source that mentions exactly
 // one option. Sources are ordered most- to least-trustworthy; a source that
 // mentions two options ("shirt jacket") is skipped rather than guessed at.
-export function guessOption(options, sources, aliases = {}) {
+// `ambiguous` is the most options any source mentioned when none gave a single answer.
+function scanOption(options, sources, aliases = {}) {
+  let ambiguous = 0;
   for (const text of sources) {
     if (!text) continue;
     const hits = options.filter(o =>
       variants(o, aliases[o]).some(w => new RegExp(`\\b${escapeRe(w)}\\b`, 'i').test(text)));
-    if (hits.length === 1) return hits[0];
+    if (hits.length === 1) return { value: hits[0], ambiguous: 0 };
+    ambiguous = Math.max(ambiguous, hits.length);
   }
-  return '';
+  return { value: '', ambiguous };
 }
+
+export const guessOption = (options, sources, aliases) => scanOption(options, sources, aliases).value;
 
 export function guessFashionFields(info, url, { entries, types, colors }) {
   const brand = guessBrand(info, url, entries);
@@ -50,11 +55,15 @@ export function guessFashionFields(info, url, { entries, types, colors }) {
   const sources = first => [first, scrub(info.title), scrub(path)];
   const whole = info.price && Math.round(Number(info.price)); // whole dollars: $49.99 -> $50
   const price = whole && (!info.currency || info.currency === 'USD' ? whole : `${info.currency} ${whole}`);
+  const type = scanOption(types, sources(info.category));
+  const color = scanOption(colors, sources(info.color), COLOR_ALIASES);
   return {
     brand,
     price: price || '',
-    type: guessOption(types, sources(info.category)),
-    color: guessOption(colors, sources(info.color), COLOR_ALIASES)
+    type: type.value,
+    color: color.value,
+    // Fields left blank because the page matched several options, with how many: "color (2 matches)".
+    skipped: { ...(type.ambiguous > 1 && { type: type.ambiguous }), ...(color.ambiguous > 1 && { color: color.ambiguous }) }
   };
 }
 
@@ -82,4 +91,36 @@ export function recordCorrections(raw, filled, final, url, corrections) {
     if (raw[k] && filled[k] && final[k] && final[k] !== filled[k]) ((corrections[host] ??= {})[k] ??= {})[raw[k]] = final[k];
   }
   return corrections;
+}
+
+// ─── Page titles ─────────────────────────────────────────────────────────────
+// "Pricing | Stripe" or "Dashboard - Linear" → "Pricing" / "Dashboard", when the tail names the site (og:site_name or a label of the host).
+export function cleanTitle(title, siteName, url) {
+  const m = title.match(/^(.*\S)\s+[|\-–—·•]\s+([^|\-–—·•]+)$/);
+  if (!m) return title;
+  const [, head, tail] = m;
+  const t = norm(tail);
+  const labels = hostOf(url).split('.').slice(0, -1).map(norm).filter(l => l.length >= 3);
+  const names = siteName && norm(siteName).length >= 3 ? [norm(siteName)] : [];
+  return head.length >= 3 && t && [...labels, ...names].some(n => t.includes(n) || n.includes(t)) ? head : title;
+}
+
+// ─── Autofill report per shop ────────────────────────────────────────────────
+// { host: { runs, missing: { color: 4 } } }: how often a field came back empty from each shop, kept in localStorage.
+export function recordReport(report, url, fields) {
+  const host = hostOf(url);
+  if (!host) return report;
+  const row = (report[host] ??= { runs: 0, missing: {} });
+  row.runs++;
+  for (const [field, value] of Object.entries(fields)) if (!value) row.missing[field] = (row.missing[field] || 0) + 1;
+  return report;
+}
+
+// "bronsonshop.com: color missing 4/15", busiest shops first; shops where nothing was ever missing are left out.
+export function reportLines(report, limit = 8) {
+  return Object.entries(report)
+    .filter(([, r]) => Object.keys(r.missing).length)
+    .sort((a, b) => b[1].runs - a[1].runs || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([host, r]) => `${host}: ${Object.entries(r.missing).sort((a, b) => b[1] - a[1]).map(([f, n]) => `${f} missing ${n}/${r.runs}`).join(', ')}`);
 }

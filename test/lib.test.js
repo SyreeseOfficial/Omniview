@@ -45,17 +45,6 @@ test('timeAgo picks the largest whole unit', async () => {
   assert.equal(timeAgo(ago(400 * 86400e3), now), '1 year ago');
 });
 
-test('contrastRatio matches the WCAG reference values', async () => {
-  const { contrastRatio, contrastLevel } = await import('../public/js/lib.js');
-  assert.equal(contrastRatio('#000000', '#ffffff').toFixed(1), '21.0');
-  assert.equal(contrastRatio('#777777', '#777777'), 1);
-  assert.equal(contrastRatio('#767676', '#ffffff').toFixed(2), '4.54'); // the classic AA gray
-  assert.equal(contrastLevel(21), 'AAA');
-  assert.equal(contrastLevel(4.54), 'AA');
-  assert.equal(contrastLevel(3.2), 'AA Large');
-  assert.equal(contrastLevel(2), null);
-});
-
 test('orderEntries puts the manual order first and keeps the rest in place', async () => {
   const { orderEntries } = await import('../public/js/lib.js');
   const list = ['a', 'b', 'c', 'd'].map(id => ({ id }));
@@ -113,4 +102,53 @@ test('libraryStats counts months, top tags/sources and favorites\' palette', asy
   assert.deepEqual(s.tags[0], ['Minimal', 2]);
   assert.deepEqual(s.via, [['Dribbble', 2]]);
   assert.equal(s.palette.length, 2, 'near-identical reds collapse into one');
+});
+
+test('priceOf prefers the number next to a currency, else the first', async () => {
+  const { priceOf } = await import('../public/js/lib.js');
+  const p = price => priceOf({ price });
+  assert.equal(p('160'), 160);
+  assert.equal(p('$1,299.50'), 1299.5);
+  assert.equal(p('EUR 120'), 120);
+  assert.equal(p('2 for $100'), 100);
+  assert.equal(p('from $90 to $120'), 90);
+  assert.equal(p('about 80'), 80);
+  assert.equal(p('free'), null);
+  assert.equal(p(undefined), null);
+});
+
+test('formatTotal adds only USD and bare prices and counts the rest', async () => {
+  const { formatTotal, currencyOf } = await import('../public/js/lib.js');
+  const list = prices => prices.map(price => ({ price }));
+  assert.equal(formatTotal(list(['$100', '120', ''])), '$220');
+  assert.equal(formatTotal(list(['$100', 'EUR 120'])), '$100 + 1 in another currency');
+  assert.equal(formatTotal(list(['£40', '€50', '10'])), '$10 + 2 in another currency');
+  assert.equal(currencyOf({ price: 'EUR 120' }), 'EUR');
+  assert.equal(currencyOf({ price: '$5' }), 'USD');
+});
+
+test('fashionStats splits wishlist and bought and ignores other currencies in the spread', async () => {
+  const { fashionStats } = await import('../public/js/lib.js');
+  const e = (price, extra = {}) => ({ price, style_tags: [], brand: 'A', bought: false, ...extra });
+  const s = fashionStats([e('100'), e('300'), e('EUR 50'), e('80', { bought: true, brand: 'B' }), e('', { style_tags: ['Bought'], brand: 'B' })]);
+  assert.deepEqual(s.wishlist, { count: 3, total: 400, other: 1 });
+  assert.deepEqual(s.bought, { count: 2, total: 80, other: 0 });
+  assert.deepEqual([s.average, s.min, s.max], [200, 100, 300]);
+  assert.deepEqual(s.brands, [['A', 3], ['B', 2]]);
+  assert.equal(fashionStats([]).average, null);
+});
+
+test('fuzzy search tolerates one typo per word', async () => {
+  const { withinOneEdit, fuzzyMatch } = await import('../public/js/lib.js');
+  assert.ok(withinOneEdit('barbor', 'barbour'));
+  assert.ok(withinOneEdit('barbour', 'barbor'));
+  assert.ok(withinOneEdit('coat', 'cost'));
+  assert.ok(!withinOneEdit('coat', 'cart'));
+  assert.ok(!withinOneEdit('coat', 'coating'));
+  const jacket = { title: 'Beaufort Wax Jacket', brand: 'Barbour' };
+  assert.ok(fuzzyMatch(jacket, 'barbor'));
+  assert.ok(fuzzyMatch(jacket, 'wax jaket'));
+  assert.ok(!fuzzyMatch(jacket, 'zzz'));
+  assert.ok(!fuzzyMatch(jacket, 'ba')); // too short to guess
+  assert.ok(!fuzzyMatch(jacket, ''));
 });

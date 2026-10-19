@@ -220,7 +220,7 @@ router.delete('/api/entries/:id', (req, res) => {
 });
 
 // Bulk actions
-const BULK_ACTIONS = ['delete', 'tag', 'untag', 'setType', 'addToBoard', 'removeFromBoard', 'favorite'];
+const BULK_ACTIONS = ['delete', 'tag', 'untag', 'setType', 'setBrand', 'setColor', 'setFoundVia', 'addToBoard', 'removeFromBoard', 'favorite'];
 router.post('/api/entries/bulk', (req, res) => {
   const { ids, action } = req.body;
   if (!Array.isArray(ids) || !ids.every(id => typeof id === 'string')) throw httpError(400, 'ids array required');
@@ -257,6 +257,22 @@ router.post('/api/entries/bulk', (req, res) => {
       const raw = optional(req.body.type) === null ? '' : cleanString(req.body.type, 'type', 100);
       const type = raw ? canon(db.types, raw) : null;
       apply = e => { e.type = type; };
+      break;
+    }
+    case 'setBrand': {
+      if (!('brand' in SPACES[currentSpace()].fields)) throw httpError(400, 'This library has no brand field');
+      const brand = optional(req.body.brand) === null ? '' : cleanString(req.body.brand, 'brand', SPACES[currentSpace()].fields.brand);
+      apply = e => { e.brand = brand; };
+      break;
+    }
+    case 'setColor': {
+      const color = optional(req.body.color) === null ? null : cleanString(req.body.color, 'color', 50) || null;
+      apply = e => { e.color = color; };
+      break;
+    }
+    case 'setFoundVia': {
+      const via = optional(req.body.foundVia) === null ? '' : canon(db.foundVia, cleanString(req.body.foundVia, 'foundVia', 100));
+      apply = e => { e.found_via = via; };
       break;
     }
     case 'addToBoard': {

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { guessBrand, guessOption, guessFashionFields, guessFoundVia, applyCorrections, recordCorrections } from '../public/js/autofill.js';
+import { guessBrand, guessOption, guessFashionFields, guessFoundVia, applyCorrections, recordCorrections, cleanTitle, recordReport, reportLines } from '../public/js/autofill.js';
 
 test('guessFoundVia matches known hosts against your own list only', () => {
   const list = ['Dribbble', 'Pinterest', 'Reddit'];
@@ -70,4 +70,30 @@ test('guessFashionFields uses the URL path as a last source and takes the page c
   const g = guessFashionFields({ title: '', category: 'Shirts' }, 'https://s.example/products/wool-shirt-jacket', lists);
   assert.equal(g.type, 'Shirt'); // category mentions one type, the path mentions two
   assert.equal(guessFashionFields({ title: '' }, 'https://s.example/products/leather-shoes', lists).type, 'Shoes');
+});
+
+test('guessFashionFields reports which fields it skipped and why', () => {
+  const g = guessFashionFields({ title: 'Shirt jacket', price: '90', color: 'black and red' }, 'https://s.example/', lists);
+  assert.deepEqual(g.skipped, { type: 2, color: 2 });
+  assert.equal(g.type, '');
+  assert.deepEqual(guessFashionFields({ title: 'Wool jacket' }, 'https://s.example/', { ...lists, types: ['Jacket'] }).skipped, {});
+});
+
+test('cleanTitle drops a trailing site name but nothing else', () => {
+  assert.equal(cleanTitle('Pricing | Stripe', null, 'https://stripe.com/pricing'), 'Pricing');
+  assert.equal(cleanTitle('Dashboard - Linear', 'Linear', 'https://linear.app/'), 'Dashboard');
+  assert.equal(cleanTitle('Docs – Stripe Docs', null, 'https://docs.stripe.com/'), 'Docs');
+  assert.equal(cleanTitle('Design - Systems', null, 'https://stripe.com/'), 'Design - Systems'); // tail is not the site
+  assert.equal(cleanTitle('Stripe', 'Stripe', 'https://stripe.com/'), 'Stripe');
+  assert.equal(cleanTitle('A - Stripe', null, 'https://stripe.com/'), 'A - Stripe'); // too little left
+  assert.equal(cleanTitle('Well-known thing', null, 'https://well.example/'), 'Well-known thing'); // hyphen without spaces
+});
+
+test('the autofill report counts empty fields per shop', () => {
+  const report = {};
+  recordReport(report, 'https://www.bronsonshop.com/a', { brand: 'Bronson', color: '' });
+  recordReport(report, 'https://bronsonshop.com/b', { brand: 'Bronson', color: '' });
+  recordReport(report, 'https://bronsonshop.com/c', { brand: '', color: 'Black' });
+  recordReport(report, 'https://fine.example/', { brand: 'X', color: 'Red' });
+  assert.deepEqual(reportLines(report), ['bronsonshop.com: color missing 2/3, brand missing 1/3']);
 });

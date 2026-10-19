@@ -848,3 +848,24 @@ test('unfurl answers are cached, so the same link is fetched once', async () => 
     site.close();
   }
 });
+
+test('bulk setBrand, setColor and setFoundVia, and brand rename/merge', async () => {
+  const a = await create('https://brand-a.example', { brand: 'Bronson Mfg.' }, 'fashion');
+  const b = await create('https://brand-b.example', { brand: 'Bronson MFG' }, 'fashion');
+  const bulk = body => call('POST', '/api/entries/bulk', { ids: [a.id, b.id], ...body }, 'fashion');
+  assert.equal((await bulk({ action: 'setBrand', brand: 'Bronson' })).body.updated, 2);
+  assert.equal((await bulk({ action: 'setColor', color: 'Black' })).status, 200);
+  assert.equal((await bulk({ action: 'setFoundVia', foundVia: 'Mall' })).status, 200);
+  const got = (await call('GET', `/api/entries/${a.id}`, undefined, 'fashion')).body;
+  assert.deepEqual([got.brand, got.color, got.found_via], ['Bronson', 'Black', 'Mall']);
+  assert.ok((await call('GET', '/api/found-via', undefined, 'fashion')).body.includes('Mall'), 'a new found-via is registered');
+  const ui = await create('https://brand-ui.example');
+  assert.equal((await call('POST', '/api/entries/bulk', { ids: [ui.id], action: 'setBrand', brand: 'X' })).status, 400, 'the UI library has no brand');
+  await call('DELETE', `/api/entries/${ui.id}`);
+
+  assert.equal((await call('PUT', '/api/brands/Bronson', { newName: 'Bronson Mfg' }, 'fashion')).body.updated, 2);
+  assert.equal((await call('GET', `/api/entries/${b.id}`, undefined, 'fashion')).body.brand, 'Bronson Mfg');
+  assert.equal((await call('PUT', '/api/brands/Nobody', { newName: 'X' }, 'fashion')).status, 404);
+  assert.equal((await call('PUT', '/api/brands/Bronson Mfg', { newName: '  ' }, 'fashion')).status, 400);
+  await bulk({ action: 'delete' });
+});
