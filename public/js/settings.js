@@ -83,19 +83,25 @@ export function setupSettings() {
     e.target.disabled = false;
   });
 
-  $('reset-btn').addEventListener('click', () => {
-    confirm_(`Factory reset the ${SPACES[state.space]} library? ALL its entries, boards, and tags will be permanently deleted. The other library is not touched. This cannot be undone.`, async () => {
-      try {
-        await api.post('/api/reset', { confirm: 'reset' });
-      } catch (err) { toastError(err.message); return; }
-      await loadAll();
-      renderBrowse();
-      renderSettings();
-    });
+  // Typing the library's name is the confirmation, so there's no second dialog.
+  $('reset-confirm').addEventListener('input', () => {
+    $('reset-btn').disabled = $('reset-confirm').value.trim().toLowerCase() !== SPACES[state.space].toLowerCase();
+  });
+  $('reset-btn').addEventListener('click', async () => {
+    try {
+      await api.post('/api/reset', { confirm: 'reset' });
+    } catch (err) { toastError(err.message); return; }
+    await loadAll();
+    renderBrowse();
+    renderSettings();
+    toastSuccess(`${SPACES[state.space]} library reset.`);
   });
 }
 
 export function renderSettings() {
+  $('reset-confirm').value = '';
+  $('reset-btn').disabled = true;
+  $('danger-zone').open = false;
   renderTagList();
   renderTypeList();
   renderFoundViaList();

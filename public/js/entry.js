@@ -1,7 +1,7 @@
 // The Add Entry form (auto-fill, duplicate check, screenshot queue) and the
 // entry detail modal (screenshot carousel, palette, prev/next, save).
 
-import { state, boardLabel, safeHref, isHttpUrl, faviconImg, colorName, thumbImg, titleOf, PLACEHOLDER_SVG, COLOR_NAMES, escHtml } from './state.js';
+import { state, boardLabel, priceOf, safeHref, isHttpUrl, faviconImg, colorName, thumbImg, titleOf, PLACEHOLDER_SVG, COLOR_NAMES, escHtml } from './state.js';
 import { moreLike, timeAgo, contrastRatio, contrastLevel, dominantColors } from './lib.js';
 import { guessFashionFields, guessFoundVia, applyCorrections, recordCorrections } from './autofill.js';
 import { api } from './api.js';
@@ -9,7 +9,7 @@ import {
   confirm_, toastSuccess, toastError, openModalOverlay, closeModalOverlay, isOpen, openLightbox, setLightboxSrc
 } from './modals.js';
 import { comboValue, setCombo, setupTagInput, renderTagPills, renderTagSuggestions } from './options.js';
-import { renderBrowse, deleteEntriesWithUndo, toggleFavorite, recordRecent, focusCard } from './browse.js';
+import { renderBrowse, deleteEntriesWithUndo, toggleFavorite, toggleFlag, markVisited, recordRecent, focusCard } from './browse.js';
 import { navigate } from './main.js';
 
 const $ = id => document.getElementById(id);
@@ -487,6 +487,23 @@ export function updateFormBoardChips() {
 
 // ═══════════════════════════════════════════ DETAIL MODAL ══
 let detailBaseline = '';
+let detailPriceWas = ''; // the price before the last "Refresh price", saved as price_was
+
+function showPriceWas() {
+  const el = $('detail-price-was');
+  const was = detailPriceWas && detailPriceWas !== $('detail-price').value.trim() ? detailPriceWas : '';
+  el.textContent = was ? `was ${was}` : '';
+  el.style.display = was ? '' : 'none';
+}
+
+// Pin / Bought buttons reflect the entry; both save straight away like the heart does.
+function syncFlagButtons(entry) {
+  for (const [id, on] of [['detail-pin', entry?.pinned], ['detail-bought', entry?.bought]]) {
+    $(id).classList.toggle('is-fav', !!on);
+    $(id).classList.toggle('active', !!on);
+    $(id).setAttribute('aria-pressed', String(!!on));
+  }
+}
 
 function detailSnapshot() {
   return JSON.stringify({
@@ -553,6 +570,7 @@ function renderDetailDates(entry) {
   };
   wrap.appendChild(part(timeAgo(entry.date_added), entry.date_added));
   if (entry.updated_at) wrap.append(' · ', part(`edited ${timeAgo(entry.updated_at)}`, entry.updated_at));
+  if (entry.visited_at) wrap.append(' · ', part(`site opened ${timeAgo(entry.visited_at)}`, entry.visited_at));
 }
 
 function renderPalette(entry) {
@@ -607,6 +625,43 @@ export function setupDetailModal() {
   $('detail-prev').addEventListener('click', () => stepDetail(-1));
   $('detail-next').addEventListener('click', () => stepDetail(1));
 
+  for (const [id, flag] of [['detail-pin', 'pinned'], ['detail-bought', 'bought']]) {
+    $(id).addEventListener('click', async () => {
+      if (!state.detailEntry) return;
+      await toggleFlag(state.detailEntry.id, flag);
+      state.detailEntry = state.entries.find(e => e.id === state.detailEntry.id);
+      syncFlagButtons(state.detailEntry);
+    });
+  }
+
+  $('detail-price').addEventListener('input', showPriceWas);
+
+  // Marks the site as re-checked; the link itself opens normally.
+  $('detail-url').addEventListener('click', () => { if (state.detailEntry) markVisited([state.detailEntry.id]); });
+
+  // Manual only: re-reads the product page and puts the new price in the field, keeping the old one as "was".
+  // Nothing is saved until Save Changes.
+  $('detail-refresh-price').addEventListener('click', async e => {
+    const entry = state.detailEntry;
+    if (!entry) return;
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      const info = await api.get(`/api/unfurl?url=${encodeURIComponent(entry.url)}`);
+      const price = String(guessFashionFields(info, entry.url, { entries: [], types: [], colors: [] }).price || '');
+      const current = $('detail-price').value.trim();
+      if (!price) toastError('No price found on that page.');
+      else if (priceOf({ price }) === priceOf({ price: current })) toastSuccess(`Price unchanged (${current}).`);
+      else {
+        if (current) detailPriceWas = current;
+        $('detail-price').value = price;
+        showPriceWas();
+        toastSuccess(`Price is now ${price}${current ? ` (was ${current})` : ''}. Save to keep it.`);
+      }
+    } catch (err) { toastError(err.message); }
+    btn.disabled = false;
+  });
+
   $('detail-fav').addEventListener('click', async () => {
     if (!state.detailEntry) return;
     await toggleFavorite(state.detailEntry.id);
@@ -654,7 +709,7 @@ export function setupDetailModal() {
       found_via: comboValue('detail-found-via'),
       note: $('detail-note').value.trim(),
       favorite: state.detailEntry.favorite,
-      ...(state.space === 'fashion' && { brand: comboValue('detail-brand'), price: $('detail-price').value.trim() }),
+      ...(state.space === 'fashion' && { brand: comboValue('detail-brand'), price: $('detail-price').value.trim(), price_was: detailPriceWas }),
       style_tags: state.detailTags,
       boards: [...state.detailBoards]
     };
@@ -711,6 +766,9 @@ function loadDetail(entry) {
   $('detail-title').value = entry.title;
   setCombo('detail-brand', entry.brand || '');
   $('detail-price').value = entry.price || '';
+  detailPriceWas = entry.price_was || '';
+  showPriceWas();
+  syncFlagButtons(entry);
   setCombo('detail-type', entry.type || '');
   setCombo('detail-color', entry.color || '');
   setCombo('detail-found-via', entry.found_via);

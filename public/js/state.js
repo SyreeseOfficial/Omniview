@@ -4,7 +4,8 @@
 // whatever else server.js defines). The server picks one per request from the X-Space
 // header (api.js). name → label; replaced with the server's list at boot (loadSpaces).
 export const SPACES = { ui: 'UI', fashion: 'Fashion' };
-export const defaultFilters = () => ({ q: '', type: '', tags: [], board: '', color: '', brand: '', via: '', added: '', from: '', to: '', favorite: false, recent: false, hideBought: false, both: false, tagMode: 'any' });
+// Fashion starts with bought items hidden; the UI space has no such flag.
+export const defaultFilters = (space = 'ui') => ({ q: '', type: '', tags: [], board: '', color: '', brand: '', via: '', added: '', from: '', to: '', favorite: false, recent: false, hideBought: space === 'fashion', both: false, tagMode: 'any' });
 
 export const state = {
   space: localStorage.getItem('omniview-space') || 'ui', // checked against the server's list at boot
@@ -109,8 +110,11 @@ export function thumbImg(file, alt = '') {
 
 export function titleOf(e) { return e.title || cleanUrl(e.url); }
 
-// "Acme · $120" under a fashion entry's name (either part may be missing).
-export const brandPrice = e => [e.brand, e.price].filter(Boolean).join(' · ');
+// "Acme · $120 (was $150)" under a fashion entry's name (any part may be missing).
+export const brandPrice = e => [e.brand, e.price && (e.price_was && e.price_was !== e.price ? `${e.price} (was ${e.price_was})` : e.price)].filter(Boolean).join(' · ');
+
+// Bought via the flag, or the older "bought" tag convention.
+export const isBought = e => e.bought || e.style_tags.some(t => t.toLowerCase() === 'bought');
 
 // The number in a free-text price ("160", "$1,299.50", "EUR 120"), or null.
 export const priceOf = e => {

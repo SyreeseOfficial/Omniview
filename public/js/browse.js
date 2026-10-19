@@ -3,7 +3,7 @@
 
 import {
   state, SPACES, COLORS, PLACEHOLDER_SVG, OPEN_ICON, COPY_ICON, BOARD_ICON, byName, cleanUrl, titleOf, safeHref, thumbImg, faviconImg,
-  colorName, defaultFilters, brandPrice, spaceKey, priceOf, priceTotal, boardLabel, escHtml
+  colorName, defaultFilters, brandPrice, isBought, spaceKey, priceOf, priceTotal, boardLabel, escHtml
 } from './state.js';
 import { api } from './api.js';
 import { inAddedRange } from './lib.js';
@@ -52,7 +52,7 @@ export function setupSearch() {
 const LAYOUTS = ['gallery', 'masonry', 'list'];
 
 export function loadPersistedFilters() {
-  state.filters = defaultFilters();
+  state.filters = defaultFilters(state.space);
   state.sort = 'newest';
   state.group = '';
   state.cardSize = 220;
@@ -119,7 +119,7 @@ export function setupFilters() {
   // Clears every filter but the search text, tag mode and the both-libraries switch.
   $('filter-clear').addEventListener('click', () => {
     const { q, tagMode, both } = state.filters;
-    state.filters = { ...defaultFilters(), q, tagMode, both };
+    state.filters = { ...defaultFilters(state.space), q, tagMode, both };
     renderBrowse();
   });
 
@@ -384,7 +384,14 @@ const rankOf = e => {
   return shuffleRank.get(e.id);
 };
 
+// Pinned entries stay on top whatever the sort (Array.sort is stable, so each half keeps its order).
+const pinnedFirst = list => list.sort((a, b) => b.pinned - a.pinned);
+
 function sortEntries(entries) {
+  return pinnedFirst(sortBy(entries));
+}
+
+function sortBy(entries) {
   const list = [...entries];
   const byNewest = (a, b) => new Date(b.date_added) - new Date(a.date_added);
   switch (state.sort) {
@@ -443,7 +450,7 @@ function applyFilters(entries, skip = '') {
   if (f.brand && skip !== 'brand') list = list.filter(e => e.brand === f.brand);
   if (f.via && skip !== 'via') list = list.filter(e => e.found_via === f.via);
   if (f.added) list = list.filter(e => inAddedRange(e.date_added, f));
-  if (f.hideBought) list = list.filter(e => !e.style_tags.some(t => t.toLowerCase() === 'bought'));
+  if (f.hideBought) list = list.filter(e => !isBought(e));
   if (f.tags.length && skip !== 'tags') {
     list = f.tagMode === 'all'
       ? list.filter(e => f.tags.every(t => e.style_tags.includes(t)))
@@ -539,7 +546,7 @@ export function renderBrowse() {
     $(id).setAttribute('aria-pressed', String(on));
   });
   $('filter-both').textContent = `Also in ${SPACES[otherSpace()]}`;
-  $('filter-clear').style.display = chips.length || f.favorite || f.recent || f.hideBought ? '' : 'none';
+  $('filter-clear').style.display = chips.length || f.favorite || f.recent || f.hideBought !== defaultFilters(state.space).hideBought ? '' : 'none';
 
   const matched = applyFilters(state.entries);
   const filtered = f.recent ? matched : sortEntries(matched); // "recent" keeps most-recently-viewed first
@@ -676,6 +683,17 @@ function favButton(entry) {
   return btn;
 }
 
+function pinButton(entry) {
+  const btn = iconButton('button', 'card-fav card-pin' + (entry.pinned ? ' is-pinned' : ''), entry.pinned ? 'Unpin' : 'Pin to top');
+  btn.setAttribute('aria-pressed', String(!!entry.pinned));
+  btn.textContent = '📌';
+  btn.addEventListener('click', async e => {
+    e.stopPropagation();
+    await toggleFlag(entry.id, 'pinned');
+  });
+  return btn;
+}
+
 function copyButton(entry) {
   const btn = iconButton('button', 'card-open', 'Copy URL');
   btn.innerHTML = COPY_ICON;
@@ -750,7 +768,7 @@ function openLink(entry, className, label) {
   a.target = '_blank';
   a.rel = 'noopener';
   a.innerHTML = OPEN_ICON;
-  a.addEventListener('click', e => e.stopPropagation());
+  a.addEventListener('click', e => { e.stopPropagation(); markVisited([entry.id]); });
   return a;
 }
 
@@ -774,10 +792,13 @@ function createCard(entry, clickOpensDetail, boardId = null) {
   card.tabIndex = 0;
   if (state.selectedIds.has(entry.id)) card.classList.add('selected');
   if (!entry.screenshot) card.classList.add('no-shot');
+  if (entry.visited_at) card.classList.add('visited');
+  card.title = entry.visited_at ? `Site last opened ${new Date(entry.visited_at).toLocaleDateString()}` : '';
 
   const isMobile = entry.type === 'Mobile App';
   const thumb = document.createElement('div');
   thumb.className = 'thumb-wrap' + (isMobile ? ' mobile' : '');
+  if (entry.palette[0]) thumb.style.backgroundColor = entry.palette[0]; // shows while the thumbnail loads
 
   if (entry.screenshot) {
     thumb.appendChild(thumbImg(entry.screenshot, titleOf(entry)));
@@ -793,12 +814,21 @@ function createCard(entry, clickOpensDetail, boardId = null) {
     thumb.appendChild(badge);
   }
 
-  // Overlay: open, copy URL, add to board, fav (+ remove-from-board)
+  // Status badges that stay visible without hovering
+  const flags = [entry.pinned && '📌 Pinned', entry.bought && 'Bought'].filter(Boolean);
+  if (flags.length) {
+    const flagEl = document.createElement('span');
+    flagEl.className = 'card-flags';
+    flagEl.textContent = flags.join(' · ');
+    thumb.appendChild(flagEl);
+  }
+
+  // Overlay: open, copy URL, add to board, pin, fav (+ remove-from-board)
   const overlay = document.createElement('div');
   overlay.className = 'card-overlay';
   const open = openLink(entry, 'card-open', 'Open site');
   if (open) overlay.appendChild(open);
-  overlay.append(copyButton(entry), boardButton(entry), favButton(entry));
+  overlay.append(copyButton(entry), boardButton(entry), pinButton(entry), favButton(entry));
 
   if (boardId) {
     const removeBtn = iconButton('button', 'card-remove-board', 'Remove from board');
@@ -889,6 +919,7 @@ function createRow(entry, clickOpensDetail) {
   row.className = 'entry-row';
   row.dataset.id = entry.id;
   if (state.selectedIds.has(entry.id)) row.classList.add('selected');
+  if (entry.visited_at) row.classList.add('visited');
 
   const check = document.createElement('div');
   check.className = 'row-check';
@@ -896,6 +927,7 @@ function createRow(entry, clickOpensDetail) {
 
   const thumb = document.createElement('div');
   thumb.className = 'row-thumb';
+  if (entry.palette[0]) thumb.style.backgroundColor = entry.palette[0];
   if (entry.screenshot) {
     thumb.appendChild(thumbImg(entry.screenshot));
   } else {
@@ -911,7 +943,7 @@ function createRow(entry, clickOpensDetail) {
   title.append(titleOf(entry));
   const url = document.createElement('div');
   url.className = 'row-url';
-  url.textContent = [brandPrice(entry), cleanUrl(entry.url)].filter(Boolean).join(' · ');
+  url.textContent = [entry.pinned && '📌', entry.bought && 'Bought', entry.visited_at && '✓ visited', brandPrice(entry), cleanUrl(entry.url)].filter(Boolean).join(' · ');
   url.title = entry.url;
   main.append(title, url);
 
@@ -930,7 +962,7 @@ function createRow(entry, clickOpensDetail) {
 
   const actions = document.createElement('div');
   actions.className = 'row-actions';
-  actions.appendChild(favButton(entry));
+  actions.append(pinButton(entry), favButton(entry));
   const open = openLink(entry, 'row-open', 'Open source');
   if (open) actions.appendChild(open);
 
@@ -1131,12 +1163,27 @@ function updateBulkCount() {
 }
 
 // ═══════════════════════════════════════════ FAVORITES ══
-export async function toggleFavorite(id) {
+export async function toggleFlag(id, flag) {
   const idx = state.entries.findIndex(e => e.id === id);
   if (idx === -1) return;
-  const updated = await api.put(`/api/entries/${id}`, { favorite: !state.entries[idx].favorite });
+  const updated = await api.put(`/api/entries/${id}`, { [flag]: !state.entries[idx][flag] });
   state.entries[idx] = updated;
   refreshViews();
+}
+
+export const toggleFavorite = id => toggleFlag(id, 'favorite');
+
+// Stamps entries whose site was just opened. Fire and forget: the card gets its mark now, the server catches up.
+export async function markVisited(ids) {
+  try {
+    const { visited_at } = await api.post('/api/visit', { ids });
+    const seen = new Set(ids);
+    state.entries.forEach(e => { if (seen.has(e.id)) e.visited_at = visited_at; });
+    document.querySelectorAll('.entry-card, .entry-row').forEach(el => {
+      if (!seen.has(el.dataset.id) || el.classList.contains('visited')) return;
+      el.classList.add('visited'); // the ✓ is CSS (.visited .card-url::after)
+    });
+  } catch { /* the badge is a convenience; the link already opened */ }
 }
 
 export function renderFavorites() {

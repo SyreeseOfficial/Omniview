@@ -184,6 +184,26 @@ test('price and brand exist in the fashion space only', async () => {
   await call('DELETE', `/api/entries/${ui.id}`);
 });
 
+test('pinned, bought, price_was and visits', async () => {
+  const f = await create('https://flags.example', { price: '160' }, 'fashion');
+  assert.deepEqual([f.pinned, f.bought, f.visited_at], [false, false, null]);
+  const up = (await call('PUT', `/api/entries/${f.id}`, { pinned: true, bought: true, price: '120', price_was: '160' }, 'fashion')).body;
+  assert.deepEqual([up.pinned, up.bought, up.price, up.price_was], [true, true, '120', '160']);
+  assert.equal((await call('PUT', `/api/entries/${f.id}`, { pinned: 'yes' }, 'fashion')).status, 400);
+
+  const flagsOnly = (await call('PUT', `/api/entries/${f.id}`, { pinned: false }, 'fashion')).body;
+  assert.equal(flagsOnly.updated_at, up.updated_at, 'pinning is not an edit');
+
+  const visit = await call('POST', '/api/visit', { ids: [f.id, 'missing'] }, 'fashion');
+  assert.equal(visit.body.count, 1);
+  const after = (await call('GET', `/api/entries/${f.id}`, undefined, 'fashion')).body;
+  assert.equal(after.visited_at, visit.body.visited_at);
+  assert.equal(after.updated_at, up.updated_at, 'visiting is not an edit');
+  assert.equal((await call('POST', '/api/visit', { ids: 'x' }, 'fashion')).status, 400);
+
+  await call('POST', '/api/entries/bulk', { ids: [f.id], action: 'delete' }, 'fashion');
+});
+
 test('each space is saved to its own file, with its own daily backup', async () => {
   const f = await create('https://persist.example', {}, 'fashion');
   await app.flushDB();

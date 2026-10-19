@@ -1,11 +1,11 @@
 // Boards view: the board grid, a single board's entries, the "add entries"
 // picker, and drag-to-another-board.
 
-import { state, PLACEHOLDER_SVG, escHtml, titleOf, thumbImg, priceTotal, boardLabel } from './state.js';
+import { state, PLACEHOLDER_SVG, escHtml, titleOf, safeHref, thumbImg, priceTotal, boardLabel } from './state.js';
 import { api } from './api.js';
 import { orderEntries } from './lib.js';
 import { confirm_, prompt_, toastSuccess, toastError, openModalOverlay, closeModalOverlay } from './modals.js';
-import { renderGrid, renderBoardFilters, updateStats } from './browse.js';
+import { renderGrid, renderBoardFilters, updateStats, markVisited } from './browse.js';
 import { updateFormBoardChips } from './entry.js';
 import { navigate } from './main.js';
 
@@ -186,11 +186,31 @@ export function openBoard(board) {
   };
 
   const entries = boardEntries(board);
+  $('open-all-btn').onclick = () => openAllLinks(entries);
   state.navIds = entries.map(e => e.id);
   renderGrid($('board-entry-grid'), entries, true, board.id);
   $('board-total').textContent = priceTotal(entries);
   $('board-empty').style.display = entries.length === 0 ? '' : 'none';
   renderDropTargets(board);
+}
+
+// Opens every entry's site in a new tab (after a confirm when there are many). Browsers may
+// block all but the first tab until pop-ups are allowed for this site, so say so.
+const OPEN_ALL_CONFIRM_OVER = 5;
+function openAllLinks(entries) {
+  const list = entries.filter(e => safeHref(e.url));
+  if (!list.length) return toastError('This board has no links to open.');
+  const go = () => {
+    const opened = list.filter(e => {
+      const w = window.open(e.url, '_blank');
+      if (w) w.opener = null;
+      return w;
+    });
+    if (opened.length) markVisited(opened.map(e => e.id));
+    if (opened.length < list.length) toastError(`The browser blocked ${list.length - opened.length} of ${list.length} tabs. Allow pop-ups for this site and try again.`);
+  };
+  if (list.length > OPEN_ALL_CONFIRM_OVER) confirm_(`Open ${list.length} links in new tabs?`, go, 'Open all');
+  else go();
 }
 
 // Other boards, as drop targets for dragging a card out of this board: a plain

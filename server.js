@@ -64,7 +64,7 @@ const FASHION_DB = {
 // version was vulnerable to).
 const SPACES = {
   ui: { label: 'UI', file: DB_PATH, defaults: DEFAULT_DB, fields: {} },
-  fashion: { label: 'Fashion', file: FASHION_DB_PATH, defaults: FASHION_DB, fields: { brand: 100, price: 50 } }
+  fashion: { label: 'Fashion', file: FASHION_DB_PATH, defaults: FASHION_DB, fields: { brand: 100, price: 50, price_was: 50 } }
 };
 Object.values(SPACES).forEach(lib => Object.assign(lib, { data: null, dirty: false }));
 
@@ -86,6 +86,9 @@ function normalizeEntry(e, space) {
   if (typeof e.note !== 'string') e.note = '';
   if (typeof e.found_via !== 'string') e.found_via = '';
   e.favorite = !!e.favorite;
+  e.pinned = !!e.pinned;
+  e.bought = !!e.bought;
+  if (typeof e.visited_at !== 'string') e.visited_at = null;
   for (const f of Object.keys(SPACES[space].fields)) if (typeof e[f] !== 'string') e[f] = '';
 }
 
@@ -465,9 +468,10 @@ function cleanEntryFields(body, db, create) {
   for (const [f, max] of Object.entries(SPACES[currentSpace()].fields)) {
     if (has(f)) out[f] = cleanString(body[f], f, max);
   }
-  if (has('favorite')) {
-    if (typeof body.favorite !== 'boolean') throw httpError(400, 'favorite must be a boolean');
-    out.favorite = body.favorite;
+  for (const flag of ['favorite', 'pinned', 'bought']) {
+    if (!has(flag)) continue;
+    if (typeof body[flag] !== 'boolean') throw httpError(400, `${flag} must be a boolean`);
+    out[flag] = body[flag];
   }
   if (has('style_tags')) out.style_tags = cleanList(body.style_tags, 'style_tags', 100);
   if (has('boards')) {
@@ -606,6 +610,9 @@ app.post('/api/entries', (req, res) => {
     found_via: '',
     favicon: null,
     favorite: false,
+    pinned: false,
+    bought: false,
+    visited_at: null,
     boards: [],
     date_added: new Date().toISOString(),
     ...Object.fromEntries(Object.keys(SPACES[currentSpace()].fields).map(f => [f, ''])),
@@ -632,10 +639,23 @@ app.put('/api/entries/:id', (req, res) => {
     entry.palette = [];
   }
   Object.assign(entry, fields);
-  // Favoriting and board moves aren't "edits" to the entry itself.
-  if (Object.keys(fields).some(k => k !== 'favorite' && k !== 'boards')) entry.updated_at = new Date().toISOString();
+  // Favoriting, pinning, marking bought and board moves aren't "edits" to the entry itself.
+  if (Object.keys(fields).some(k => !['favorite', 'pinned', 'bought', 'boards'].includes(k))) entry.updated_at = new Date().toISOString();
   writeDB(db);
   res.json(entry);
+});
+
+// Records that the entry's site was opened ("visited" badge). Not an edit, so updated_at is left alone.
+app.post('/api/visit', (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length > 200 || !ids.every(i => typeof i === 'string')) throw httpError(400, 'ids must be an array of at most 200 ids');
+  const db = readDB();
+  const wanted = new Set(ids);
+  const visited_at = new Date().toISOString();
+  const hits = db.entries.filter(e => wanted.has(e.id));
+  hits.forEach(e => { e.visited_at = visited_at; });
+  if (hits.length) writeDB(db);
+  res.json({ visited_at, count: hits.length });
 });
 
 // Add a screenshot (the first one becomes the cover)

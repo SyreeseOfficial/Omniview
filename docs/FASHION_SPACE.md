@@ -57,3 +57,4 @@ About half a day, mostly the four server spots above and their tests. The `price
 - Per space: save file, daily backup (`fashion-DATE.json`), export, reset. Shared: uploads, and the cleanup sweep (checks both libraries).
 - Client: `X-Space` on every request, `state.space` in `localStorage`, filters and recents stored per space, `G` toggles, fashion accent color. `<html data-space>` plus `.ui-only` / `.fashion-only` drive what shows.
 - Fashion also relabels Title→Name and Style Tags→Tags, skips the theme-color autofill, hides the palette, and searches brand.
+- Later changes to the decisions above: a `bought` flag (Hide bought is on by default, also hides the old `bought` tag) and a manual "Refresh price" button in the detail view that keeps the previous price as `price_was`. Still no background price tracking.

@@ -97,33 +97,18 @@ All items from this section are under **Completed** or **Skipped** at the bottom
 All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ### Quality of life
-- [ ] **[M]** One-click "open all links on this board" (with a confirm over 5) for shopping or reviewing a project's references.
-- [ ] **[L]** "Pin" an entry to the top of Browse regardless of sort, for the 3 things you are actively deciding between.
-- [ ] **[L]** "Last opened site" badge: when the open-site link is clicked, record it and show a subtle "visited" state, so the wishlist shows what you already re-checked.
-- [ ] **[L]** Entry "priority" (1-3 stars) as an alternative to the single favorite flag, for wishlists with a clear top-3.
-- [ ] **[L]** Weekly digest on the empty-search Browse state: "Added this week: 4. Untagged: 12. Dead links: 0."
-- [ ] **[L]** Settings "Danger zone" separation: Factory reset sits with harmless lists; give it its own collapsed section and require typing the space name.
+
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ---
 
 ## 16. Reprioritise from FINDINGS
 
-Already listed there, but I'd move them up:
-
-- [ ] **[H]** Import / restore from export (`[H]` already). Now covers two libraries.
-- [ ] **[H]** Batch add from pasted URLs. Currently in "Skip" as `[L]`, but `FASHION_SPACE.md` says the workflow is "find on phone → Obsidian → add in batches on the laptop". That is exactly this feature.
-- [ ] **[H]** Real screenshots via headless Chromium (already `[H]`): highest-impact capture upgrade for the UI space.
-- [ ] **[M]** First-paint theme fix: now more visible since fashion has its own accent per theme.
-- [ ] **[M]** ZIP export error handler: with two libraries a crash during export affects both.
-- [ ] **[M]** Entry cards keyboard-reachable: the biggest accessibility gap.
-- [ ] **[M]** Self-host fonts: keeps "local only" true and the app usable offline.
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ## 17. Decisions to revisit (these reverse something in `FASHION_SPACE.md`)
 
-- [ ] **[?]** "No price tracking." I'd keep it off by default, but a manual "Refresh price" (section 1) respects the spirit: no background scraping, you press the button.
-- [ ] **[?]** "No status field." The `bought` tag/board convention works until the list grows; a single `bought`/`archived` flag with a "Hide bought" default would be cheaper than managing a tag.
-- [ ] **[?]** "Fashion ignores palette." Right for the swatch filter, but the thumbnail loading color (section 7) still helps there.
-- [ ] **[?]** "Never shown together." Still right for browsing; a cross-library search (section 3) is read-only and doesn't mix tags or boards.
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ---
 
@@ -223,6 +208,15 @@ Already listed there, but I'd move them up:
 - [x] **[M]** Fall back to Open Graph `product:*` tags for brand, availability and category (price is already handled).
 - [x] **[L]** Currency symbol → code mapping when JSON-LD gives only `$`/`£`/`€` text instead of ISO codes.
 - [x] **[L]** Treat `/products/...-sku` and trailing size/color variant parameters (`?variant=123`) as the same page in duplicate detection; Shopify URLs differ only by variant.
+- [x] **[M]** One-click "open all links on this board" (confirm over 5; tabs opened this way count as visited; tells you if the browser blocked pop-ups).
+- [x] **[L]** "Pin" an entry to the top of Browse regardless of sort (card button, list row, detail header; pinned badge on the card).
+- [x] **[L]** "Last opened site" badge: opening the site from a card, row, detail link or "Open all" records `visited_at`; cards show a subtle "✓ visited" and the detail shows "site opened 3 days ago".
+- [x] **[L]** Settings "Danger zone" in its own collapsed section; Factory reset needs the library name typed.
+- [x] **[M]** First-paint theme fix: an inline script in `<head>` applies the saved theme, library and accent before the stylesheet paints.
+- [x] **[M]** "Refresh price" button in the detail view: re-runs the unfurl price guess on the saved URL, puts the new price in the field and keeps the old one as `price_was` (shown as "(was 160)") once you save. Manual only, no background polling.
+- [x] **[?]** "No price tracking": resolved by the manual Refresh price button above.
+- [x] **[?]** "No status field": a `bought` flag (detail → Status → Bought). "Hide bought" is on by default in Fashion and hides the flag and the old `bought` tag.
+- [x] **[?]** "Fashion ignores palette": the cover's first palette colour is now the card/row background while the thumbnail loads, in both libraries.
 
 ## Skipped
 
@@ -233,7 +227,6 @@ Parked for now, not rejected.
 - [ ] **[M]** Normalise old prices once: a Settings button (or startup migration) that rounds `150.99` → `150` so the list matches what autofill produces now.
 - [ ] **[M]** Fashion cards crop product photos to 16:10 `object-fit: cover` (`styles.css:429-438`). Product shots are usually portrait on white; use `contain` on a neutral background in the fashion space (or default fashion to masonry).
 - [ ] **[M]** Size field (`size`, plain text, fashion only) in the form and detail. Most wishlist decisions end at "do they have my size".
-- [ ] **[M]** "Refresh price" button in the detail view: re-run the existing `pageInfo` JSON-LD parser on the saved URL, show the new price next to the old one, and keep the old one as `price_was`. Manual only, no background polling (see section 17).
 - [ ] **[M]** Read `offers.availability` in `pageInfo` (JSON-LD already parsed) and show a "Sold out" badge after a refresh.
 - [ ] **[M]** Autofill title cleanup: strip the tail that duplicates the brand or site (`Men's Jacket | Brand - Shop Online` → `Men's Jacket`). `FASHION_SPACE.md` lists messy titles as a known limit; the brand is already guessed, so subtract it.
 - [ ] **[L]** Give `guessOption` for types an alias table like `COLOR_ALIASES` already has (`autofill.js:30`): Jacket ← coat, parka, blazer, bomber; Pants ← trousers, jeans, chinos; Shoes ← boots, sneakers, loafers; Knitwear ← sweater, cardigan, jumper. Types currently get no aliases, so `Parka` guesses nothing.
@@ -263,7 +256,6 @@ Parked for now, not rejected.
 - [ ] **[L]** Drag one tag onto another in Settings to merge (the multi-select merge exists).
 - [ ] **[L]** Reorder types and found-via lists manually instead of alphabetical only.
 - [ ] **[L]** Export / import the tag, type and found-via lists as a template file, so a new space or machine starts with your taxonomy.
-- [ ] **[M]** Use the cover's first palette color as the card background while the thumbnail loads. No flash of empty gray, no extra data.
 - [ ] **[L]** Hover-to-scroll on tall screenshots in a card (long landing pages slowly scroll inside the card, Dribbble-style).
 - [ ] **[L]** Cap stacked toasts at 3 and collapse repeats, so a bulk failure doesn't paint the screen.
 - [ ] **[M]** "Skip to content" link ahead of the 7-item sidebar.
@@ -295,3 +287,12 @@ Parked for now, not rejected.
 - [ ] **[L]** Preserve the current filters in the URL query (`?tag=Minimal&type=Website`) so a filtered view can be bookmarked even before full hash routing (FINDINGS) exists.
 - [ ] **[L]** Detect "sale" prices (`highPrice` vs `price`, `priceValidUntil`) and store the original so a "was $200" line is possible.
 - [ ] **[L]** Detect multiple colorways (`hasVariant`) and offer the list, instead of choosing only the first variant's offer.
+- [ ] **[L]** Entry "priority" (1-3 stars) as an alternative to the single favorite flag, for wishlists with a clear top-3.
+- [ ] **[L]** Weekly digest on the empty-search Browse state: "Added this week: 4. Untagged: 12. Dead links: 0."
+- [ ] **[H]** Import / restore from export (`[H]` already). Now covers two libraries.
+- [ ] **[H]** Batch add from pasted URLs. `FASHION_SPACE.md` says the workflow is "find on phone → Obsidian → add in batches on the laptop". That is exactly this feature.
+- [ ] **[H]** Real screenshots via headless Chromium (already `[H]`): highest-impact capture upgrade for the UI space.
+- [ ] **[M]** ZIP export error handler: with two libraries a crash during export affects both.
+- [ ] **[M]** Entry cards keyboard-reachable: the biggest accessibility gap.
+- [ ] **[M]** Self-host fonts: keeps "local only" true and the app usable offline.
+- [ ] **[?]** "Never shown together." Still right for browsing; a cross-library search (section 3) is read-only and doesn't mix tags or boards.

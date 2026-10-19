@@ -1564,3 +1564,23 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, .combo-field:
 .stats-label { font-size: .7rem; color: var(--text-3); }
 .stats-palette { display: flex; flex-wrap: wrap; gap: 2px; }
 .stats-swatch { width: 56px; height: 56px; border-radius: 6px; border: 1px solid var(--border-2); }
+
+/* Pinned / bought / visited markers */
+.card-flags {
+  position: absolute;
+  left: .45rem; top: .45rem;
+  padding: .05rem .4rem;
+  border-radius: 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: .62rem;
+  pointer-events: none;
+}
+.card-pin.is-pinned { border-color: var(--accent); background: var(--accent-dim); }
+.entry-card.visited .card-url::before { content: '✓ '; color: var(--accent); }
+.entry-card.visited .card-url { opacity: .8; }
+.price-row { display: flex; gap: .5rem; align-items: center; }
+.price-row .detail-input { flex: 1; min-width: 0; }
+.field-hint { font-size: .72rem; color: var(--text-3); }
+#detail-pin.is-fav { color: var(--accent); }

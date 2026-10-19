@@ -5,6 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="dark light">
   <title>Omniview</title>
+  <script>
+    // Applies the saved theme, library and accent before first paint, so the page doesn't flash
+    // the dark/violet defaults. main.js re-applies them (and validates the library) after boot.
+    try {
+      var root = document.documentElement, pref = localStorage.getItem('omniview-theme'), space = localStorage.getItem('omniview-space');
+      if (!/^(dark|light|system)$/.test(pref)) pref = 'dark';
+      if (!/^[a-z]+$/.test(space)) space = 'ui';
+      root.dataset.themePref = pref;
+      root.dataset.theme = pref === 'system' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : pref;
+      root.dataset.space = space;
+      var accent = localStorage.getItem(space === 'ui' ? 'omniview-accent' : 'omniview-accent-' + space);
+      if (/^#[0-9a-f]{6}$/i.test(accent)) {
+        root.style.setProperty('--accent', accent);
+        root.style.setProperty('--accent-dim', 'color-mix(in srgb, ' + accent + ' 15%, transparent)');
+      }
+    } catch (e) { /* storage unavailable: keep the defaults */ }
+  </script>
   <link rel="icon" id="favicon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2022%2022'%20fill='%238b7cf8'%3E%3Crect%20x='1'%20y='1'%20width='9'%20height='9'%20rx='2'%20opacity='.9'/%3E%3Crect%20x='12'%20y='1'%20width='9'%20height='5'%20rx='2'%20opacity='.6'/%3E%3Crect%20x='12'%20y='8'%20width='9'%20height='3'%20rx='1.5'%20opacity='.4'/%3E%3Crect%20x='1'%20y='12'%20width='9'%20height='9'%20rx='2'%20opacity='.5'/%3E%3Crect%20x='12'%20y='13'%20width='9'%20height='8'%20rx='2'%20opacity='.75'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Fraunces:ital,wght@0,300;0,400;1,300&display=swap">
@@ -317,6 +334,7 @@
         <button class="btn-ghost btn-back" id="board-back">← All Boards</button>
         <div style="display:flex;gap:.5rem;align-items:center">
           <button class="btn-sm" id="print-board-btn">Print</button>
+          <button class="btn-sm" id="open-all-btn">Open all links</button>
           <button class="btn-sm" id="add-to-board-btn">+ Add</button>
           <button class="btn-sm" id="pin-board-btn" aria-pressed="false">Pin</button>
           <button class="btn-sm" id="edit-board-btn">Edit</button>
@@ -575,9 +593,18 @@
       </div>
 
       <div class="settings-section settings-danger-zone">
-        <h2 class="settings-heading">Danger Zone</h2>
-        <p class="settings-desc">Permanently delete all entries, boards, and tags in the <span class="space-name"></span> library. The other library is not touched. This cannot be undone.</p>
-        <button class="btn-danger" id="reset-btn">Factory Reset</button>
+        <details class="settings-collapse" id="danger-zone">
+          <summary class="settings-heading">
+            <span>Danger Zone</span>
+            <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </summary>
+          <p class="settings-desc">Factory reset permanently deletes all entries, boards, and tags in the <span class="space-name"></span> library. The other library is not touched. This cannot be undone.</p>
+          <label class="settings-desc" for="reset-confirm">Type <strong class="space-name"></strong> to enable the button.</label>
+          <div class="price-row">
+            <input type="text" id="reset-confirm" class="detail-input" autocomplete="off" spellcheck="false">
+            <button class="btn-danger" id="reset-btn" disabled>Factory Reset</button>
+          </div>
+        </details>
       </div>
 
     </div>
@@ -668,6 +695,7 @@
           <span id="detail-favicon"></span>
           <a class="detail-url" id="detail-url" target="_blank" rel="noopener"></a>
           <button class="fav-btn" id="detail-fav" title="Toggle favorite" aria-label="Toggle favorite" aria-pressed="false">♥</button>
+          <button class="fav-btn" id="detail-pin" title="Pin to top of Browse" aria-label="Pin to top of Browse" aria-pressed="false">📌</button>
         </div>
 
         <div class="detail-field">
@@ -682,7 +710,16 @@
 
         <div class="detail-field fashion-only">
           <span class="detail-label">Price</span>
-          <input type="text" id="detail-price" class="detail-input" maxlength="50" placeholder="e.g. $120">
+          <div class="price-row">
+            <input type="text" id="detail-price" class="detail-input" maxlength="50" placeholder="e.g. $120">
+            <button type="button" class="btn-sm" id="detail-refresh-price" title="Re-read the price from the product page">Refresh price</button>
+          </div>
+          <span class="field-hint" id="detail-price-was" style="display:none"></span>
+        </div>
+
+        <div class="detail-field fashion-only">
+          <span class="detail-label">Status</span>
+          <div class="chip-row"><button type="button" class="chip" id="detail-bought" aria-pressed="false">Bought</button></div>
         </div>
 
         <div class="detail-field">
