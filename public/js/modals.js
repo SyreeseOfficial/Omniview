@@ -36,6 +36,13 @@ export function showToast(message, opts = {}) {
   close.addEventListener('click', dismiss);
   toast.appendChild(close);
 
+  if (actionLabel) { // visible countdown: the Undo window is exactly the toast's lifetime
+    const bar = document.createElement('div');
+    bar.className = 'toast-bar';
+    bar.style.animationDuration = `${duration}ms`;
+    toast.appendChild(bar);
+  }
+
   container.appendChild(toast);
   const timer = setTimeout(dismiss, duration);
 }

@@ -1206,6 +1206,11 @@ textarea { resize: vertical; }
 @keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes toastOut { to { opacity: 0; transform: translateY(8px); } }
 .toast-msg { flex: 1; }
+.toast { position: relative; overflow: hidden; }
+.toast-bar { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; background: var(--accent); transform-origin: left; animation: toastBar linear forwards; }
+@keyframes toastBar { to { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) { .toast-bar { display: none; } }
+.main.switching { opacity: .5; pointer-events: none; transition: opacity .15s .1s; }
 .toast-success { border-left-color: var(--success); }
 .toast-error { border-left-color: var(--danger); }
 .toast-action { color: var(--accent); font-weight: 500; white-space: nowrap; }

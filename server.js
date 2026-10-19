@@ -484,15 +484,17 @@ function cleanEntryFields(body, db, create) {
 
 // ─── Duplicate URLs ───────────────────────────────────────────────────────────
 // Two URLs are "the same page" when they differ only by scheme, www., a trailing
-// slash, the #fragment, parameter order, or tracking parameters.
-const TRACKING_PARAM = /^(utm_.*|fbclid|gclid|igshid|mc_cid|mc_eid|ref|ref_src|_hsenc|_hsmi)$/i;
+// slash, the #fragment, parameter order, tracking parameters, or a size/color variant
+// (?variant=123), or, on Shopify, the /collections/<x> prefix of a /products/<handle> link.
+const TRACKING_PARAM = /^(utm_.*|fbclid|gclid|igshid|mc_cid|mc_eid|ref|ref_src|_hsenc|_hsmi|variant|size|colou?r)$/i;
 
 function normalizeUrl(raw) {
   try {
     const u = new URL(raw);
     const params = [...u.searchParams].filter(([k]) => !TRACKING_PARAM.test(k)).sort(([a], [b]) => a.localeCompare(b));
     const query = new URLSearchParams(params).toString();
-    return `${u.host.toLowerCase().replace(/^www\./, '')}${u.pathname.replace(/\/+$/, '')}${query ? `?${query}` : ''}`;
+    const path = u.pathname.replace(/\/+$/, '').replace(/^\/collections\/[^/]+(?=\/products\/)/, '');
+    return `${u.host.toLowerCase().replace(/^www\./, '')}${path}${query ? `?${query}` : ''}`;
   } catch {
     return raw;
   }
@@ -681,7 +683,8 @@ app.post('/api/entries/bulk', (req, res) => {
   const wanted = new Set(ids);
   const targets = db.entries.filter(e => wanted.has(e.id));
   // Nothing matched: skip the write (and the side effects of registering a new tag/type).
-  if (!targets.length) return res.json({ ok: true, updated: 0 });
+  const results = () => ids.map(id => ({ id, updated: targets.some(e => e.id === id) }));
+  if (!targets.length) return res.json({ ok: true, updated: 0, results: results() });
 
   const boardIds = () => {
     const wanted = cleanList([].concat(req.body.boards ?? []), 'boards', 100);
@@ -735,7 +738,7 @@ app.post('/api/entries/bulk', (req, res) => {
     if (action !== 'delete' && action !== 'favorite' && !/Board$/.test(action)) e.updated_at = now;
   });
   writeDB(db);
-  res.json({ ok: true, updated: targets.length });
+  res.json({ ok: true, updated: targets.length, results: results() });
 });
 
 // ─── Page info (auto-fill from URL) ───────────────────────────────────────────
@@ -802,12 +805,15 @@ function productNode(html) {
   return found;
 }
 
+// Some shops write the currency as a symbol instead of an ISO code. ¥ is left out: it is JPY or CNY.
+const CURRENCY_CODES = { '$': 'USD', '£': 'GBP', '€': 'EUR', '₹': 'INR' };
+
 function pageInfo(html, baseUrl) {
   const meta = {};
   const ogImages = [];
   for (const [tag] of html.matchAll(/<meta\b[^>]*>/gi)) {
     const a = attrs(tag);
-    const key = (a.property || a.name || '').toLowerCase();
+    const key = (a.property || a.name || a.itemprop || '').toLowerCase();
     if (key && a.content !== undefined && !(key in meta)) meta[key] = a.content.trim();
     if (/^(og|twitter):image(:url)?$/.test(key) && a.content) ogImages.push(a.content.trim());
   }
@@ -829,8 +835,19 @@ function pageInfo(html, baseUrl) {
   const text = v => (typeof v === 'string' ? v : v && typeof v.name === 'string' ? v.name : '').replace(/\s+/g, ' ').trim().slice(0, 100);
   const first = v => [].concat(v ?? [])[0];
   const offer = first(product.offers) || first(first(product.hasVariant)?.offers) || {};
-  const rawPrice = offer.price ?? offer.lowPrice ?? offer.priceSpecification?.price ?? meta['og:price:amount'] ?? meta['product:price:amount'];
+  // Small shops often have no JSON-LD, only microdata (<span itemprop="price" content="12">) or a data-price attribute.
+  // ponytail: first match wins, and data-price is assumed to be in whole currency units (not cents).
+  const microTag = html.match(/<[a-z][^>]*\bitemprop=["']price["'][^>]*>/i);
+  const microPrice = microTag ? attrs(microTag[0]).content : undefined;
+  const dataPrice = (html.match(/\bdata-price=["'](\d+(?:\.\d{1,2})?)["']/i) || [])[1];
+  let rawPrice = offer.price ?? offer.lowPrice ?? offer.priceSpecification?.price ?? meta['og:price:amount'] ?? meta['product:price:amount'] ?? microPrice ?? dataPrice;
+  // A price written with its symbol ("$129.99") gives the currency too.
+  let symbol = null;
+  const symbolic = typeof rawPrice === 'string' && rawPrice.trim().match(/^([$£€₹])\s*(\d[\d,]*(?:\.\d+)?)$/);
+  if (symbolic) { symbol = symbolic[1]; rawPrice = symbolic[2].replace(/,/g, ''); }
   const price = Number(rawPrice);
+  const currency = text(offer.priceCurrency || meta['og:price:currency'] || meta['product:price:currency'] || meta.pricecurrency) || symbol || '';
+  const availability = text(offer.availability || meta['product:availability'] || meta['og:availability'] || meta.availability).replace(/^.*schema\.org\//i, '');
   // JSON-LD image URLs are sloppy ("https:files/x.jpg"); only take ones that are clearly URLs.
   const ldImages = [].concat(product.image ?? []).map(i => (typeof i === 'string' ? i : i?.url)).filter(i => /^(https?:)?\/\//.test(i) || /^\/[^/]/.test(i));
   // Same picture often appears as http/https or with different ?v= params; keep the first.
@@ -846,12 +863,13 @@ function pageInfo(html, baseUrl) {
     images,
     favicon: favicon || abs('/favicon.ico'),
     themeColor: theme ? '#' + (theme[1].length === 3 ? [...theme[1]].map(c => c + c).join('') : theme[1]).toLowerCase() : null,
-    brand: text(product.brand) || null,
+    brand: text(product.brand) || text(meta['product:brand']) || text(meta['og:brand']) || null,
     siteName: text(meta['og:site_name']) || null,
     price: rawPrice !== '' && rawPrice != null && Number.isFinite(price) && price > 0 ? String(+price.toFixed(2)) : null,
-    currency: text(offer.priceCurrency || meta['og:price:currency'] || meta['product:price:currency']) || null,
+    currency: CURRENCY_CODES[currency] || currency.toUpperCase() || null,
+    availability: availability || null,
     color: text(product.color) || null,
-    category: text(product.category) || null
+    category: text(product.category) || text(meta['product:category']) || text(meta['og:product:category']) || null
   };
 }
 

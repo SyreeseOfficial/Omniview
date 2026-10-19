@@ -1012,18 +1012,31 @@ export function setupBulk() {
     const field = UNDO_FIELD[payload.action];
     const before = state.entries.filter(e => state.selectedIds.has(e.id)).map(e => ({ id: e.id, value: structuredClone(e[field]) }));
     const space = state.space;
-    const { updated } = await api.post('/api/entries/bulk', { ids, ...payload });
+    let res;
+    try {
+      res = await api.post('/api/entries/bulk', { ids, ...payload });
+    } catch (err) {
+      // The server applies a request all-or-nothing, so a failure means none changed; the selection stays for a retry.
+      toastError(`Bulk update failed, nothing was changed: ${err.message}. ${ids.length} still selected.`);
+      return;
+    }
+    const { updated, results } = res;
     await reloadEntries();
     state.selectedIds.clear();
     updateBulkCount();
     if (!updated) { showToast('0 updated: those entries no longer exist.'); return; }
-    showToast(`Updated ${updated} ${updated === 1 ? 'entry' : 'entries'}.`, {
+    const missing = results.filter(r => !r.updated).length;
+    const msg = missing
+      ? `Updated ${updated} of ${ids.length} entries (${missing} no longer ${missing === 1 ? 'exists' : 'exist'}).`
+      : `Updated ${updated} ${updated === 1 ? 'entry' : 'entries'}.`;
+    showToast(msg, {
       duration: 5000,
       actionLabel: 'Undo',
       onAction: async () => {
-        try {
-          await Promise.all(before.map(b => api.put(`/api/entries/${b.id}`, { [field]: b.value }, space)));
-        } catch (err) { toastError(`Undo failed: ${err.message}`); }
+        const restore = before.filter(b => results.find(r => r.id === b.id && r.updated));
+        const outcomes = await Promise.allSettled(restore.map(b => api.put(`/api/entries/${b.id}`, { [field]: b.value }, space)));
+        const failed = outcomes.filter(o => o.status === 'rejected').length;
+        if (failed) toastError(`Undo restored ${restore.length - failed} of ${restore.length}; ${failed} failed.`);
         if (state.space === space) await reloadEntries();
       }
     });

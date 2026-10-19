@@ -89,20 +89,12 @@ A second pass with fresh eyes on the code paths I didn't read closely the first 
 All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ### Client behavior
-- [ ] **[M]** Space switch shows no loading state: `doSwitchSpace` awaits five requests then re-renders. Dim the grid or show the spinner during the switch so a slow response doesn't look like a hang.
-- [ ] **[M]** After a failed request in the middle of a bulk operation the selection is kept (good) but the toolbar doesn't say how many succeeded. Return per-id results from the server.
-- [ ] **[M]** Keyboard shortcuts `n`, `b`, `o`, `f`, `s`, `r`, `g`, `/` are hard-coded; make them remappable in Settings, or at least disable them with one toggle (they fire on any non-input focus, including after a click on a button).
-- [ ] **[L]** The Add form's `Color` is a combo of 12 names; for UI entries autofill from the first palette color name once the screenshot is attached (the info is computed server-side already).
-- [ ] **[L]** Preserve the current filters in the URL query (`?tag=Minimal&type=Website`) so a filtered view can be bookmarked even before full hash routing (FINDINGS) exists.
-- [ ] **[L]** Time-box the toast Undo with a visible countdown bar so 5 seconds is understandable.
+
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ### Autofill depth
-- [ ] **[M]** Parse the price from the visible `<meta itemprop="price">` and `data-price` attributes when there is no JSON-LD; many small shops only have microdata.
-- [ ] **[M]** Fall back to Open Graph `product:*` tags for brand, availability and category (price is already handled).
-- [ ] **[L]** Currency symbol → code mapping when JSON-LD gives only `$`/`£`/`€` text instead of ISO codes.
-- [ ] **[L]** Detect "sale" prices (`highPrice` vs `price`, `priceValidUntil`) and store the original so a "was $200" line is possible.
-- [ ] **[L]** Detect multiple colorways (`hasVariant`) and offer the list, instead of choosing only the first variant's offer.
-- [ ] **[L]** Treat `/products/...-sku` and trailing size/color variant parameters (`?variant=123`) as the same page in duplicate detection; Shopify URLs differ only by variant.
+
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ### Quality of life
 - [ ] **[M]** One-click "open all links on this board" (with a confirm over 5) for shopping or reviewing a project's references.
@@ -222,6 +214,15 @@ Already listed there, but I'd move them up:
 - [x] **[L]** `POST /api/entries/bulk` `favorite` treats anything but `false` as true (`value !== false`); require a boolean like the single-entry route does.
 - [x] **[L]** `GET /api/export?format=` accepts any value other than `json` as ZIP; return 400 for unknown formats.
 - [x] **[L]** Export JSON strips nothing and includes derived fields (`screenshot`, `palette`); document the schema and a `version` so an importer can trust it (pairs with FINDINGS' versioned shape).
+- [x] **[M]** Space switch shows no loading state: `doSwitchSpace` awaits five requests then re-renders. Dim the grid or show the spinner during the switch so a slow response doesn't look like a hang.
+- [x] **[M]** After a failed request in the middle of a bulk operation the selection is kept (good) but the toolbar doesn't say how many succeeded. Return per-id results from the server.
+- [x] **[M]** Keyboard shortcuts `n`, `b`, `o`, `f`, `s`, `r`, `g`, `/` are hard-coded; make them remappable in Settings, or at least disable them with one toggle (they fire on any non-input focus, including after a click on a button).
+- [x] **[L]** The Add form's `Color` is a combo of 12 names; for UI entries autofill from the first palette color name once the screenshot is attached (the info is computed server-side already).
+- [x] **[L]** Time-box the toast Undo with a visible countdown bar so 5 seconds is understandable.
+- [x] **[M]** Parse the price from the visible `<meta itemprop="price">` and `data-price` attributes when there is no JSON-LD; many small shops only have microdata.
+- [x] **[M]** Fall back to Open Graph `product:*` tags for brand, availability and category (price is already handled).
+- [x] **[L]** Currency symbol → code mapping when JSON-LD gives only `$`/`£`/`€` text instead of ISO codes.
+- [x] **[L]** Treat `/products/...-sku` and trailing size/color variant parameters (`?variant=123`) as the same page in duplicate detection; Shopify URLs differ only by variant.
 
 ## Skipped
 
@@ -291,3 +292,6 @@ Parked for now, not rejected.
 - [ ] **[?]** Import from a browser bookmarks HTML file or a Pinterest/Are.na export; feeds the batch-add flow.
 - [ ] **[?]** Installable PWA (`manifest.webmanifest` + icons) so Omniview opens in its own window and launches from the app menu, paired with the systemd unit already in FINDINGS.
 - [ ] **[?]** Cross-links between entries ("related", "alternative to") shown as a small graph or list in the detail view.
+- [ ] **[L]** Preserve the current filters in the URL query (`?tag=Minimal&type=Website`) so a filtered view can be bookmarked even before full hash routing (FINDINGS) exists.
+- [ ] **[L]** Detect "sale" prices (`highPrice` vs `price`, `priceValidUntil`) and store the original so a "was $200" line is possible.
+- [ ] **[L]** Detect multiple colorways (`hasVariant`) and offer the list, instead of choosing only the first variant's offer.

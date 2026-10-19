@@ -337,7 +337,7 @@ test('unfurl reads title, image, favicon and theme color from a page', async () 
     assert.equal(res.status, 200);
     assert.deepEqual(res.body, {
       title: 'Fish & Chips', image: `${origin}/hero.png`, images: [`${origin}/hero.png`], favicon: `${origin}/fav.svg`, themeColor: '#aabbcc',
-      brand: null, siteName: null, price: null, currency: null, color: null, category: null
+      brand: null, siteName: null, price: null, currency: null, availability: null, color: null, category: null
     });
     assert.equal((await call('GET', '/api/unfurl?url=javascript:alert(1)')).status, 400);
   } finally {
@@ -395,6 +395,38 @@ test('unfurl reads product details from JSON-LD, even far into a big page', asyn
   } finally {
     site.close();
   }
+});
+
+test('unfurl falls back to microdata, data-price, product:* tags and symbol currencies', async () => {
+  const pages = {
+    '/micro': '<span itemprop="price" content="45.00">$45</span><meta itemprop="priceCurrency" content="GBP">',
+    '/data': '<div data-price="30.50"></div>',
+    '/og': '<meta property="product:brand" content="Acme"><meta property="product:category" content="Boots"><meta property="product:availability" content="out of stock"><meta property="product:price:amount" content="80">',
+    '/symbol': `<script type="application/ld+json">${JSON.stringify({ '@type': 'Product', offers: { price: '$1,299.00', priceCurrency: '€', availability: 'https://schema.org/InStock' } })}</script>`
+  };
+  const site = http.createServer((req, res) => { res.setHeader('Content-Type', 'text/html'); res.end(`<html><body>${pages[req.url]}</body></html>`); });
+  await new Promise(r => site.listen(0, '127.0.0.1', r));
+  const origin = `http://127.0.0.1:${site.address().port}`;
+  const get = async p => (await call('GET', `/api/unfurl?url=${encodeURIComponent(origin + p)}`)).body;
+  try {
+    const micro = await get('/micro');
+    assert.deepEqual([micro.price, micro.currency], ['45', 'GBP']);
+    assert.equal((await get('/data')).price, '30.5');
+    const og = await get('/og');
+    assert.deepEqual([og.brand, og.category, og.availability, og.price], ['Acme', 'Boots', 'out of stock', '80']);
+    const symbol = await get('/symbol');
+    assert.deepEqual([symbol.price, symbol.currency, symbol.availability], ['1299', 'EUR', 'InStock']);
+  } finally {
+    site.close();
+  }
+});
+
+test('Shopify variant and collection URLs count as the same page', async () => {
+  const first = await create('https://shop.example/collections/men/products/boot?variant=1&utm_source=x');
+  const dupe = await call('POST', '/api/entries', { title: 'Boot', url: 'https://www.shop.example/products/boot?variant=2' });
+  assert.equal(dupe.status, 409);
+  assert.equal(dupe.body.duplicate.id, first.id);
+  await call('POST', '/api/entries/bulk', { ids: [first.id], action: 'delete' });
 });
 
 // ─── Bulk ────────────────────────────────────────────────────────────────────
@@ -532,7 +564,9 @@ test('merging into a blank target registers nothing', async () => {
 
 test('bulk reports how many entries changed; no match means no side effects', async () => {
   const e = await create('https://bulkcount.example');
-  assert.equal((await call('POST', '/api/entries/bulk', { ids: [e.id, 'ghost'], action: 'favorite', value: true })).body.updated, 1);
+  const mixed = (await call('POST', '/api/entries/bulk', { ids: [e.id, 'ghost'], action: 'favorite', value: true })).body;
+  assert.equal(mixed.updated, 1);
+  assert.deepEqual(mixed.results, [{ id: e.id, updated: true }, { id: 'ghost', updated: false }]);
   const none = await call('POST', '/api/entries/bulk', { ids: ['ghost'], action: 'tag', tag: 'NeverRegistered' });
   assert.equal(none.body.updated, 0);
   assert.ok(!(await call('GET', '/api/tags')).body.includes('NeverRegistered'));

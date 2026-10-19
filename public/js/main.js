@@ -219,12 +219,18 @@ export function switchSpace(next) {
 async function doSwitchSpace(next) {
   const prev = state.space;
   state.space = next; // the requests below go to the new library
+  const main = document.querySelector('.main');
+  main.classList.add('switching'); // dims the grid so a slow response doesn't look like a hang
+  main.setAttribute('aria-busy', 'true');
   try {
     await loadAll();
   } catch (err) {
     state.space = prev;
     toastError(err.message);
     return;
+  } finally {
+    main.classList.remove('switching');
+    main.removeAttribute('aria-busy');
   }
   try { localStorage.setItem('omniview-space', next); } catch { /* storage unavailable */ }
   loadPersistedFilters();
@@ -308,7 +314,14 @@ function setSidebarCollapsed(collapsed) {
 }
 
 // ═══════════════════════════════════════════ KEYBOARD SHORTCUTS ══
+const shortcutsOn = () => { try { return localStorage.getItem('omniview-shortcuts') !== 'off'; } catch { return true; } };
+
 function setupKeyboardShortcuts() {
+  const toggle = $('shortcuts-toggle');
+  toggle.checked = shortcutsOn();
+  toggle.addEventListener('change', () => {
+    try { localStorage.setItem('omniview-shortcuts', toggle.checked ? 'on' : 'off'); } catch { /* storage unavailable */ }
+  });
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       // Dialogs can stack on top of each other (e.g. delete-entry over the
@@ -348,6 +361,7 @@ function setupKeyboardShortcuts() {
     }
 
     if (isOpen('detail-overlay') || anyDialogOpen()) return;
+    if (!shortcutsOn() && e.key !== '?') return;
 
     switch (e.key) {
       case '/': e.preventDefault(); navigate('browse'); $('search-input').focus(); break;

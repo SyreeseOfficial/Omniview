@@ -145,7 +145,11 @@ async function updateFormPalette() {
       const ctx = new OffscreenCanvas(48, 48).getContext('2d');
       ctx.drawImage(bmp, 0, 0, 48, 48);
       bmp.close();
-      if ((state.pending.find(p => p.file) || {}).file === file) formPalette = dominantColors(ctx.getImageData(0, 0, 48, 48).data);
+      if ((state.pending.find(p => p.file) || {}).file === file) {
+        formPalette = dominantColors(ctx.getImageData(0, 0, 48, 48).data);
+        // Name the dominant color once a screenshot is attached, unless the field is already filled.
+        if (formPalette.length && !comboValue('f-color')) { setCombo('f-color', colorName(formPalette[0])); markAutofilled('f-color'); }
+      }
     } catch { /* undecodable: no suggestions */ }
   }
   renderFormTagPills();
