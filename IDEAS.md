@@ -40,28 +40,14 @@ All items from this section are under **Completed** or **Skipped** at the bottom
 
 ## 8. Accessibility
 
-- [ ] **[M]** Visible focus rings everywhere. `:focus-visible` appears twice in 1,359 lines of CSS; buttons, cards, swatches, and filter pills likely fall back to defaults that the dark theme hides.
-- [ ] **[M]** "Skip to content" link ahead of the 7-item sidebar.
-- [ ] **[M]** Announce results: make `#result-count` (`12 of 27`) an `aria-live="polite"` region so filtering is audible.
-- [ ] **[M]** Run axe or Lighthouse over both themes and both spaces; fix contrast of muted text and the fashion accent in light mode first.
-- [ ] **[L]** Honor `prefers-contrast: more` and `forced-colors` (swatch borders, selected states that rely only on color).
-- [ ] **[L]** Return focus to the invoking card when the detail modal or lightbox closes.
-- [ ] **[L]** Don't rely on color alone for favorite and selected states; add an icon/shape change.
-- [ ] **[L]** Text-scale test at 200% zoom and 18px base font; fix clipped controls.
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ## 9. Performance
 
-- [ ] **[M]** Optimise originals: 43 files / 36 MB in `uploads/`, mostly PNG. A Settings action (or on upload) that converts to lossless/q90 WebP and caps at ~2400px would cut that by well over half. Keep the original name pattern so entries don't change.
-- [ ] **[M]** `<link rel="modulepreload">` for the 10 `public/js/*.js` modules; plain ES imports otherwise load in a waterfall.
-- [ ] **[L]** Add `decoding="async"` to `thumbImg` images so large grids don't block the main thread.
-- [ ] **[L]** 600px thumbnails look soft on hi-DPI masonry; generate a 1200px variant and use `srcset`.
-- [ ] **[L]** Quiet the request log for static assets. Every page load prints ~50 lines (each thumb), burying real errors and writes.
-- [ ] **[L]** Cache the static `public/` assets with a content-hash query string or `ETag` + `maxAge`, since there is no bundler.
-- [ ] **[L]** Skip `extractPalette` for fashion-space uploads (the swatch filter is hidden there), saving CPU and keeping `palette` empty.
+All items from this section are under **Completed** or **Skipped** at the bottom.
 
 ## 10. Data safety & portability
 
-- [ ] **[H]** Settings → "Check unused files" shows the count and size before deleting. `cleanup-btn` runs the sweep immediately, with no preview, on a button next to harmless ones.
 - [ ] **[H]** Surface save failures. `flushDB` catches write errors and only logs (`server.js:152`); the UI keeps saying everything is fine. Track `lastSaveError` and show a persistent banner ("Changes are not being saved: disk full?").
 - [ ] **[H]** Refuse to start a second server on the same database: write `db/.lock` (PID) at startup, remove on exit. Two `npm start` runs on different ports silently overwrite each other's writes.
 - [ ] **[M]** "Export everything": one ZIP with both libraries and all screenshots. Export is per space today, and restore/import will want a single file.
@@ -240,6 +226,13 @@ Already listed there, but I'd move them up:
 - [x] **[L]** User-pickable accent color in Settings (fashion already has its own).
 - [x] **[L]** Compact list density toggle for the list layout.
 - [x] **[L]** Print stylesheet so a board prints as a clean contact sheet.
+- [x] **[M]** Visible focus rings everywhere. `:focus-visible` appears twice in 1,359 lines of CSS; buttons, cards, swatches, and filter pills likely fall back to defaults that the dark theme hides.
+- [x] **[M]** Optimise originals: 43 files / 36 MB in `uploads/`, mostly PNG. Settings → "Optimise screenshots" converts to lossless/q90 WebP and caps at ~2400px would cut that by well over half. Keep the original name pattern so entries don't change.
+- [x] **[M]** `<link rel="modulepreload">` for the 10 `public/js/*.js` modules; plain ES imports otherwise load in a waterfall.
+- [x] **[L]** Add `decoding="async"` to `thumbImg` images so large grids don't block the main thread.
+- [x] **[L]** Quiet the request log for static assets. Every page load prints ~50 lines (each thumb), burying real errors and writes.
+- [x] **[L]** Cache the static `public/` assets with a content-hash query string or `ETag` + `maxAge`, since there is no bundler.
+- [x] **[H]** Settings → "Check unused files" shows the count and size before deleting. `cleanup-btn` runs the sweep immediately, with no preview, on a button next to harmless ones.
 
 ## Skipped
 
@@ -283,3 +276,12 @@ Parked for now, not rejected.
 - [ ] **[M]** Use the cover's first palette color as the card background while the thumbnail loads. No flash of empty gray, no extra data.
 - [ ] **[L]** Hover-to-scroll on tall screenshots in a card (long landing pages slowly scroll inside the card, Dribbble-style).
 - [ ] **[L]** Cap stacked toasts at 3 and collapse repeats, so a bulk failure doesn't paint the screen.
+- [ ] **[M]** "Skip to content" link ahead of the 7-item sidebar.
+- [ ] **[M]** Announce results: make `#result-count` (`12 of 27`) an `aria-live="polite"` region so filtering is audible.
+- [ ] **[M]** Run axe or Lighthouse over both themes and both spaces; fix contrast of muted text and the fashion accent in light mode first.
+- [ ] **[L]** Honor `prefers-contrast: more` and `forced-colors` (swatch borders, selected states that rely only on color).
+- [ ] **[L]** Return focus to the invoking card when the detail modal or lightbox closes.
+- [ ] **[L]** Don't rely on color alone for favorite and selected states; add an icon/shape change.
+- [ ] **[L]** Text-scale test at 200% zoom and 18px base font; fix clipped controls.
+- [ ] **[L]** 600px thumbnails look soft on hi-DPI masonry; generate a 1200px variant and use `srcset`.
+- [ ] **[L]** Skip `extractPalette` for fashion-space uploads (the swatch filter is hidden there), saving CPU and keeping `palette` empty.

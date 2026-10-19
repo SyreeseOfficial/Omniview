@@ -47,13 +47,28 @@ export function setupSettings() {
   setupOptionAdder('new-type-input', 'add-type-btn', () => state.types, ensureType, renderTypeList);
   setupOptionAdder('new-found-via-input', 'add-found-via-btn', () => state.foundVia, ensureFoundVia, renderFoundViaList);
 
+  const mb = bytes => `${(bytes / 1048576).toFixed(1)} MB`;
   $('cleanup-btn').addEventListener('click', async () => {
     try {
-      const { removed, bytes } = await api.post('/api/cleanup');
-      toastSuccess(removed
-        ? `Removed ${removed} unused ${removed === 1 ? 'file' : 'files'} (${(bytes / 1048576).toFixed(1)} MB).`
-        : 'No unused files found.');
+      const { removed, bytes } = await api.get('/api/cleanup');
+      if (!removed) return toastSuccess('No unused files found.');
+      confirm_(`${removed} unused ${removed === 1 ? 'file' : 'files'} (${mb(bytes)}) will be deleted. Continue?`, async () => {
+        try {
+          await api.post('/api/cleanup');
+          toastSuccess(`Removed ${removed} unused ${removed === 1 ? 'file' : 'files'} (${mb(bytes)}).`);
+        } catch (err) { toastError(err.message); }
+      }, 'Delete');
     } catch (err) { toastError(err.message); }
+  });
+
+  $('optimize-btn').addEventListener('click', async e => {
+    e.target.disabled = true;
+    try {
+      const { converted, saved } = await api.post('/api/optimize');
+      toastSuccess(converted ? `Optimised ${converted} ${converted === 1 ? 'file' : 'files'}, saved ${mb(saved)}.` : 'Nothing to optimise.');
+      if (converted) { await loadAll(); renderBrowse(); }
+    } catch (err) { toastError(err.message); }
+    e.target.disabled = false;
   });
 
   $('reset-btn').addEventListener('click', () => {

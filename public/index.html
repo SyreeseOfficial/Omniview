@@ -9,6 +9,17 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Fraunces:ital,wght@0,300;0,400;1,300&display=swap">
   <link rel="stylesheet" href="styles.css">
+  <link rel="modulepreload" href="js/main.js">
+  <link rel="modulepreload" href="js/api.js">
+  <link rel="modulepreload" href="js/autofill.js">
+  <link rel="modulepreload" href="js/boards.js">
+  <link rel="modulepreload" href="js/browse.js">
+  <link rel="modulepreload" href="js/entry.js">
+  <link rel="modulepreload" href="js/lib.js">
+  <link rel="modulepreload" href="js/modals.js">
+  <link rel="modulepreload" href="js/options.js">
+  <link rel="modulepreload" href="js/settings.js">
+  <link rel="modulepreload" href="js/state.js">
 </head>
 <body>
 
@@ -541,8 +552,10 @@
 
       <div class="settings-section">
         <h2 class="settings-heading">Storage</h2>
-        <p class="settings-desc">Delete screenshot files that no entry uses any more, in either library (for example left over from an interrupted upload).</p>
-        <button class="btn-sm" id="cleanup-btn">Clean unused files</button>
+        <p class="settings-desc">Delete screenshot files that no entry uses any more, in either library (for example left over from an interrupted upload). Shows the count and size first.</p>
+        <button class="btn-sm" id="cleanup-btn">Check unused files</button>
+        <p class="settings-desc">Re-save PNG and JPEG screenshots as WebP, at most 2400px on the longest side. Entries keep working; files that wouldn't get smaller are left alone.</p>
+        <button class="btn-sm" id="optimize-btn">Optimise screenshots</button>
       </div>
 
       <div class="settings-section settings-danger-zone">

@@ -295,11 +295,30 @@ test('cleanup removes unreferenced uploads but keeps used ones', async () => {
   const orphan = path.join(UPLOADS, 'orphan.png');
   fs.writeFileSync(orphan, PNG_1PX);
 
+  const preview = await call('GET', '/api/cleanup');
+  assert.ok(preview.body.removed >= 1 && preview.body.bytes > 0);
+  assert.ok(fs.existsSync(orphan), 'preview must not delete');
   const res = await call('POST', '/api/cleanup');
   assert.equal(res.status, 200);
   assert.ok(res.body.removed >= 1);
   assert.equal(fs.existsSync(orphan), false);
   assert.ok(fs.existsSync(path.join(UPLOADS, kept)));
+  await call('DELETE', `/api/entries/${id}`);
+});
+
+test('optimize converts a large PNG to a capped WebP and repoints the entry', async () => {
+  const sharp = require('sharp');
+  const raw = require('node:crypto').randomBytes(3000 * 100 * 3);
+  const png = await sharp(raw, { raw: { width: 3000, height: 100, channels: 3 } }).png().toBuffer();
+  const id = (await create('https://optimize.example')).id;
+  const old = (await upload(id, 'image/png', png)).body.screenshot;
+  const res = await call('POST', '/api/optimize');
+  assert.equal(res.status, 200);
+  assert.ok(res.body.converted >= 1);
+  const entry = (await call('GET', `/api/entries/${id}`)).body;
+  assert.equal(entry.screenshot, old.replace('.png', '.webp'));
+  assert.equal(fs.existsSync(path.join(UPLOADS, old)), false);
+  assert.equal((await sharp(path.join(UPLOADS, entry.screenshot)).metadata()).width, 2400);
   await call('DELETE', `/api/entries/${id}`);
 });
 

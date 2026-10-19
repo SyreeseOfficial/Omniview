@@ -266,6 +266,8 @@ const upload = multer({
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
+    // Thumbnails and static assets would bury real errors and writes.
+    if (res.statusCode < 400 && !req.originalUrl.startsWith('/api')) return;
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now() - start}ms`);
   });
   next();
@@ -311,7 +313,9 @@ app.use((req, res, next) => { req.body ??= {}; next(); }); // Express 5 leaves b
 // same, so the upload route re-binds after it.
 const bindSpace = (req, res, next) => spaceStore.run(req.space || 'ui', next);
 app.use('/api', bindSpace);
-app.use(express.static(path.join(__dirname, 'public')));
+// No bundler means no content hashes in file names, so a max-age would serve stale
+// modules after an update. no-cache still uses the ETag: unchanged files are a 304.
+app.use(express.static(path.join(__dirname, 'public'), { setHeaders: res => res.setHeader('Cache-Control', 'no-cache') }));
 // Filenames are UUIDs and never rewritten, so browsers can cache them forever.
 app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '365d', immutable: true }));
 
@@ -992,9 +996,9 @@ app.get('/api/export', (req, res) => {
 });
 
 // ─── Maintenance ──────────────────────────────────────────────────────────────
-// Deletes upload files (and thumbnails) that no entry references, e.g. left
-// behind when an upload succeeded but the entry was never saved.
-app.post('/api/cleanup', (req, res) => {
+// Upload files (and thumbnails) that no entry references, e.g. left behind when
+// an upload succeeded but the entry was never saved. GET previews, POST deletes.
+function sweepUnused(dryRun) {
   const used = new Set(attaching);
   // Uploads are shared by every space, so a file is unused only if no space's entries reference it.
   Object.values(SPACES).forEach(lib => lib.data.entries.forEach(e => e.screenshots.forEach(f => used.add(f))));
@@ -1005,13 +1009,57 @@ app.post('/api/cleanup', (req, res) => {
     .forEach(d => {
       const p = path.join(dir, d.name);
       bytes += fs.statSync(p).size;
-      fs.rmSync(p);
+      if (!dryRun) fs.rmSync(p);
       removed++;
     });
   sweep(UPLOADS_DIR, name => used.has(name));
   const usedThumbs = new Set([...used].map(thumbName));
   sweep(THUMBS_DIR, name => usedThumbs.has(name));
-  res.json({ removed, bytes });
+  return { removed, bytes };
+}
+app.get('/api/cleanup', (req, res) => res.json(sweepUnused(true)));
+app.post('/api/cleanup', (req, res) => res.json(sweepUnused(false)));
+
+// Re-encodes originals as WebP capped at MAX_ORIGINAL_PX. The UUID in the file name
+// is kept (only the extension changes), so thumbnails stay valid; every entry in
+// both libraries that referenced the file is repointed. GIFs (maybe animated) and
+// AVIFs (already compact) are left alone, as is anything that wouldn't get smaller.
+const MAX_ORIGINAL_PX = 2400;
+app.post('/api/optimize', async (req, res) => {
+  const renames = new Map();
+  let saved = 0;
+  const files = fs.readdirSync(UPLOADS_DIR, { withFileTypes: true }).filter(d => d.isFile() && /\.(png|jpe?g|webp)$/i.test(d.name));
+  for (const { name } of files) {
+    if (attaching.has(name)) continue;
+    const src = path.join(UPLOADS_DIR, name);
+    try {
+      const meta = await sharp(src).metadata();
+      if (meta.pages > 1) continue;
+      const buf = await sharp(src).rotate().resize({ width: MAX_ORIGINAL_PX, height: MAX_ORIGINAL_PX, fit: 'inside', withoutEnlargement: true }).webp({ quality: 90 }).toBuffer();
+      const before = fs.statSync(src).size;
+      if (buf.length >= before) continue;
+      const next = name.replace(/\.[^.]+$/, '.webp');
+      fs.writeFileSync(`${src}.tmp`, buf);
+      fs.renameSync(`${src}.tmp`, path.join(UPLOADS_DIR, next));
+      if (next !== name) renames.set(name, next);
+      saved += before - buf.length;
+    } catch { /* unreadable file: leave it */ }
+  }
+  if (renames.size) {
+    const swap = f => renames.get(f) ?? f;
+    for (const lib of Object.values(SPACES)) {
+      lib.data.entries.forEach(e => {
+        if (!e.screenshots.some(f => renames.has(f))) return;
+        e.screenshots = e.screenshots.map(swap);
+        e.remote_shots = e.remote_shots.map(swap);
+        e.screenshot = e.screenshots[0];
+        lib.dirty = true;
+      });
+    }
+    await flushDB(); // references are on disk before the old files go
+    renames.forEach((_, old) => fs.rmSync(path.join(UPLOADS_DIR, old), { force: true }));
+  }
+  res.json({ converted: renames.size, saved });
 });
 
 // ─── Reset ────────────────────────────────────────────────────────────────────

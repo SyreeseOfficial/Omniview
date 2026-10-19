@@ -1516,3 +1516,9 @@ html[data-density="compact"] .row-thumb { width: 40px; }
   .entry-card, .board-card { break-inside: avoid; box-shadow: none !important; transform: none !important; }
   .entry-card .card-url { white-space: normal; }
 }
+
+/* ─── Keyboard focus ─────────────────────────────────────────── */
+/* One ring for everything focusable; last in the file so it beats the per-component `outline: none` resets. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input:focus-visible, textarea:focus-visible, select:focus-visible, .combo-field:focus-visible { outline-offset: 0; }
+.search-bar:focus-within { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 0; }

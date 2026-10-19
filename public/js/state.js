@@ -101,6 +101,7 @@ export function thumbImg(file, alt = '') {
   img.src = thumbUrl(file);
   img.alt = alt;
   img.loading = 'lazy';
+  img.decoding = 'async';
   img.addEventListener('error', () => { img.src = `/uploads/${file}`; }, { once: true });
   return img;
 }
