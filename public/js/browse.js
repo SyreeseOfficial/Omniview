@@ -3,7 +3,7 @@
 
 import {
   state, COLORS, PLACEHOLDER_SVG, OPEN_ICON, byName, cleanUrl, titleOf, safeHref, thumbImg, faviconImg, colorName,
-  defaultFilters, brandPrice, spaceKey
+  defaultFilters, brandPrice, spaceKey, priceOf, priceTotal
 } from './state.js';
 import { api } from './api.js';
 import { confirm_, toastSuccess, toastError, showToast } from './modals.js';
@@ -69,6 +69,11 @@ export function setupFilters() {
     renderBrowse();
   });
 
+  $('filter-bought').addEventListener('click', () => {
+    state.filters.hideBought = !state.filters.hideBought;
+    renderBrowse();
+  });
+
   $('filter-recent').addEventListener('click', () => {
     state.filters.recent = !state.filters.recent;
     renderBrowse();
@@ -89,7 +94,7 @@ export function setupFilters() {
   });
 
   $('filter-clear').addEventListener('click', () => {
-    state.filters = { ...state.filters, type: '', tags: [], board: '', color: '', favorite: false, recent: false };
+    state.filters = { ...state.filters, type: '', tags: [], board: '', color: '', brand: '', favorite: false, recent: false, hideBought: false };
     renderBrowse();
   });
 
@@ -136,6 +141,17 @@ function renderTypeFilter() {
   );
 }
 
+function renderBrandFilter() {
+  const counts = {};
+  state.entries.forEach(e => { if (e.brand) counts[e.brand] = (counts[e.brand] || 0) + 1; });
+  renderSingleFilter(
+    'filter-brand-dd', 'filter-brand-list', 'filter-brand-label', 'All Brands',
+    Object.keys(counts).sort(byName).map(v => ({ value: v, label: `${v} ${counts[v]}` })),
+    state.filters.brand,
+    v => { state.filters.brand = v; renderBrowse(); }
+  );
+}
+
 function renderTagFilters() {
   const wrap = $('filter-tags');
   wrap.innerHTML = '';
@@ -177,7 +193,8 @@ export function renderBoardFilters() {
 }
 
 // Swatch grid: an entry matches a color when its Color field is that name, or
-// one of its three dominant palette colors falls in that name's bucket.
+// (UI space only: fashion palettes are mostly white backdrop) one of its three
+// dominant palette colors falls in that name's bucket.
 function renderColorFilter() {
   const current = state.filters.color;
   $('filter-color-dd').classList.toggle('active', !!current);
@@ -206,8 +223,21 @@ const SORT_OPTIONS = [
   { value: 'newest', label: 'Newest' },
   { value: 'oldest', label: 'Oldest' },
   { value: 'az', label: 'A–Z' },
-  { value: 'type', label: 'By Type' }
+  { value: 'type', label: 'By Type' },
+  { value: 'brand', label: 'By Brand', fashion: true },
+  { value: 'price-asc', label: 'Price: Low → High', fashion: true },
+  { value: 'price-desc', label: 'Price: High → Low', fashion: true }
 ];
+const visibleSorts = () => SORT_OPTIONS.filter(o => !o.fashion || state.space === 'fashion');
+
+// Sorting by type or brand also puts a heading above each group.
+const GROUP_KEYS = { type: e => e.type || 'No type', brand: e => e.brand || 'No brand' };
+
+// Entries without a price go last in both directions.
+const byPrice = dir => (a, b) => {
+  const pa = priceOf(a), pb = priceOf(b);
+  return pa === null || pb === null ? (pa === null) - (pb === null) : dir * (pa - pb);
+};
 
 function sortEntries(entries) {
   const list = [...entries];
@@ -216,6 +246,9 @@ function sortEntries(entries) {
     case 'oldest': return list.sort((a, b) => new Date(a.date_added) - new Date(b.date_added));
     case 'az': return list.sort((a, b) => titleOf(a).localeCompare(titleOf(b)));
     case 'type': return list.sort((a, b) => (a.type || '').localeCompare(b.type || '') || byNewest(a, b));
+    case 'brand': return list.sort((a, b) => (a.brand || '').localeCompare(b.brand || '') || byNewest(a, b));
+    case 'price-asc': return list.sort(byPrice(1));
+    case 'price-desc': return list.sort(byPrice(-1));
     default: return list.sort(byNewest);
   }
 }
@@ -223,10 +256,11 @@ function sortEntries(entries) {
 function renderSortFilter() {
   const dd = $('filter-sort-dd');
   const list = $('filter-sort-list');
-  const current = SORT_OPTIONS.find(o => o.value === state.sort) || SORT_OPTIONS[0];
+  const options = visibleSorts();
+  const current = options.find(o => o.value === state.sort) || options[0];
   $('filter-sort-label').textContent = `Sort: ${current.label}`;
   list.innerHTML = '';
-  SORT_OPTIONS.forEach(o => {
+  options.forEach(o => {
     const item = document.createElement('button');
     item.type = 'button';
     item.className = 'filter-option' + (o.value === state.sort ? ' selected' : '');
@@ -252,13 +286,18 @@ function applyFilters(entries) {
     );
   }
   if (f.type) list = list.filter(e => e.type === f.type);
+  if (f.brand) list = list.filter(e => e.brand === f.brand);
+  if (f.hideBought) list = list.filter(e => !e.style_tags.some(t => t.toLowerCase() === 'bought'));
   if (f.tags.length) {
     list = f.tagMode === 'all'
       ? list.filter(e => f.tags.every(t => e.style_tags.includes(t)))
       : list.filter(e => f.tags.some(t => e.style_tags.includes(t)));
   }
   if (f.board) list = list.filter(e => e.boards.includes(f.board));
-  if (f.color) list = list.filter(e => e.color === f.color || e.palette.slice(0, 3).some(h => colorName(h) === f.color));
+  if (f.color) {
+    const fromPalette = state.space !== 'fashion';
+    list = list.filter(e => e.color === f.color || (fromPalette && e.palette.slice(0, 3).some(h => colorName(h) === f.color)));
+  }
   if (f.favorite) list = list.filter(e => e.favorite);
   if (f.recent) {
     const recent = readRecent();
@@ -270,16 +309,19 @@ function applyFilters(entries) {
 export function renderBrowse() {
   const f = state.filters;
   renderTypeFilter();
+  renderBrandFilter();
   renderTagFilters();
   renderBoardFilters();
   renderColorFilter();
   renderSortFilter();
   $('filter-fav').classList.toggle('active', f.favorite);
   $('filter-fav').setAttribute('aria-pressed', String(f.favorite));
+  $('filter-bought').classList.toggle('active', f.hideBought);
+  $('filter-bought').setAttribute('aria-pressed', String(f.hideBought));
   $('filter-recent').classList.toggle('active', f.recent);
   $('filter-recent').setAttribute('aria-pressed', String(f.recent));
   $('filter-clear').style.display =
-    (f.type || f.tags.length || f.board || f.color || f.favorite || f.recent) ? '' : 'none';
+    (f.type || f.brand || f.tags.length || f.board || f.color || f.favorite || f.recent || f.hideBought) ? '' : 'none';
 
   const matched = applyFilters(state.entries);
   const filtered = f.recent ? matched : sortEntries(matched); // "recent" keeps most-recently-viewed first
@@ -289,8 +331,8 @@ export function renderBrowse() {
   const list = $('entry-list');
   const asList = state.layout === 'list';
 
-  if (asList) renderList(list, filtered, true);
-  else renderGrid(grid, filtered, true);
+  if (asList) renderList(list, filtered, true, true);
+  else renderGrid(grid, filtered, true, null, true);
   grid.classList.toggle('masonry', state.layout === 'masonry');
 
   grid.style.display = !asList && filtered.length ? '' : 'none';
@@ -298,14 +340,17 @@ export function renderBrowse() {
   $('browse-empty').style.display = filtered.length === 0 ? '' : 'none';
   $('browse-onboarding').style.display = state.entries.length === 0 ? '' : 'none';
   $('browse-no-match').style.display = state.entries.length === 0 ? 'none' : '';
-  $('result-count').textContent = `${filtered.length} of ${state.entries.length}`;
+  $('result-count').textContent = [`${filtered.length} of ${state.entries.length}`, priceTotal(filtered)].filter(Boolean).join(' · ');
   updateStats();
   persistFilters();
 }
 
 // Sidebar counters, derived from what's already loaded.
 export function updateStats() {
-  $('stats-line').textContent = `${state.entries.length} ${state.entries.length === 1 ? 'entry' : 'entries'}`;
+  const fashion = state.space === 'fashion';
+  const noun = fashion ? 'item' : 'entr';
+  const n = state.entries.length;
+  $('stats-line').textContent = [`${n} ${noun}${n === 1 ? (fashion ? '' : 'y') : (fashion ? 's' : 'ies')}`, priceTotal(state.entries)].filter(Boolean).join(' · ');
   $('nav-fav-count').textContent = state.entries.filter(e => e.favorite).length || '';
   $('nav-boards-count').textContent = state.boards.length || '';
 }
@@ -331,9 +376,25 @@ function syncLayoutButtons() {
   });
 }
 
-export function renderGrid(gridEl, entries, clickOpensDetail = true, boardId = null) {
-  gridEl.innerHTML = '';
-  entries.forEach(entry => gridEl.appendChild(createCard(entry, clickOpensDetail, boardId)));
+// `grouped` adds the heading rows of a By Type / By Brand sort (Browse only).
+function appendEntries(el, entries, grouped, make) {
+  const key = grouped && GROUP_KEYS[state.sort];
+  let last;
+  el.innerHTML = '';
+  entries.forEach(entry => {
+    if (key && key(entry) !== last) {
+      last = key(entry);
+      const h = document.createElement('div');
+      h.className = 'group-heading';
+      h.textContent = last;
+      el.appendChild(h);
+    }
+    el.appendChild(make(entry));
+  });
+}
+
+export function renderGrid(gridEl, entries, clickOpensDetail = true, boardId = null, grouped = false) {
+  appendEntries(gridEl, entries, grouped, entry => createCard(entry, clickOpensDetail, boardId));
 }
 
 // Small round action button used on card overlays and list rows.
@@ -474,9 +535,8 @@ function appendTagChips(container, tags) {
 }
 
 // ═══════════════════════════════════════════ LIST VIEW ══
-function renderList(listEl, entries, clickOpensDetail = true) {
-  listEl.innerHTML = '';
-  entries.forEach(entry => listEl.appendChild(createRow(entry, clickOpensDetail)));
+function renderList(listEl, entries, clickOpensDetail = true, grouped = false) {
+  appendEntries(listEl, entries, grouped, entry => createRow(entry, clickOpensDetail));
 }
 
 function createRow(entry, clickOpensDetail) {
@@ -673,7 +733,7 @@ function toggleSelect(id, card) {
 // Shift-click range select: selects every card between the last-clicked
 // entry (anchor) and the one just shift-clicked, in their on-screen order.
 function selectRange(anchorId, targetId, container) {
-  const cards = [...container.children];
+  const cards = [...container.children].filter(el => el.dataset.id); // skip group headings
   const ids = cards.map(el => el.dataset.id);
   const a = ids.indexOf(anchorId);
   const b = ids.indexOf(targetId);

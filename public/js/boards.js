@@ -1,7 +1,7 @@
 // Boards view: the board grid, a single board's entries, the "add entries"
 // picker, and drag-to-another-board.
 
-import { state, PLACEHOLDER_SVG, escHtml, titleOf, thumbImg } from './state.js';
+import { state, PLACEHOLDER_SVG, escHtml, titleOf, thumbImg, priceTotal } from './state.js';
 import { api } from './api.js';
 import { confirm_, prompt_, toastSuccess, openModalOverlay, closeModalOverlay } from './modals.js';
 import { renderGrid, renderBoardFilters, updateStats } from './browse.js';
@@ -31,7 +31,7 @@ export function renderBoards() {
     card.appendChild(boardThumbCollage(entries));
     const meta = document.createElement('div');
     meta.className = 'board-card-meta';
-    meta.innerHTML = `<div class="board-name">${escHtml(board.name)}</div><div class="board-count">${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}</div>`;
+    meta.innerHTML = `<div class="board-name">${escHtml(board.name)}</div><div class="board-count">${[`${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}`, priceTotal(entries)].filter(Boolean).join(' · ')}</div>`;
     card.appendChild(meta);
     card.addEventListener('click', () => openBoard(board));
     grid.appendChild(card);
@@ -99,6 +99,7 @@ export function openBoard(board) {
   const entries = state.entries.filter(e => e.boards.includes(board.id));
   state.navIds = entries.map(e => e.id);
   renderGrid($('board-entry-grid'), entries, true, board.id);
+  $('board-total').textContent = priceTotal(entries);
   $('board-empty').style.display = entries.length === 0 ? '' : 'none';
   renderDropTargets(board);
 }

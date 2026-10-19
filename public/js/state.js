@@ -3,7 +3,7 @@
 // Two separate libraries on one server: 'ui' (design inspiration) and 'fashion'
 // (wishlist). The server picks one per request from the X-Space header (api.js).
 export const SPACES = { ui: 'UI', fashion: 'Fashion' };
-export const defaultFilters = () => ({ q: '', type: '', tags: [], board: '', color: '', favorite: false, recent: false, tagMode: 'any' });
+export const defaultFilters = () => ({ q: '', type: '', tags: [], board: '', color: '', brand: '', favorite: false, recent: false, hideBought: false, tagMode: 'any' });
 
 export const state = {
   space: localStorage.getItem('omniview-space') === 'fashion' ? 'fashion' : 'ui',
@@ -104,6 +104,17 @@ export function titleOf(e) { return e.title || cleanUrl(e.url); }
 
 // "Acme · $120" under a fashion entry's name (either part may be missing).
 export const brandPrice = e => [e.brand, e.price].filter(Boolean).join(' · ');
+
+// The number in a free-text price ("160", "$1,299.50", "EUR 120"), or null.
+export const priceOf = e => {
+  const n = parseFloat(String(e.price).replace(/,/g, '').match(/\d+(\.\d+)?/)?.[0]);
+  return Number.isNaN(n) ? null : n;
+};
+
+// "$1,420" for a fashion list, '' in the UI space. Assumes dollars (see priceOf).
+export const priceTotal = entries => state.space === 'fashion'
+  ? '$' + Math.round(entries.reduce((sum, e) => sum + (priceOf(e) ?? 0), 0)).toLocaleString()
+  : '';
 
 // Per-space localStorage key, so each library remembers its own filters and recents.
 export const spaceKey = base => (state.space === 'ui' ? base : `${base}-${state.space}`);

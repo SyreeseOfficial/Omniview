@@ -399,6 +399,8 @@ textarea { resize: vertical; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ─── Grid ───────────────────────────────────────────────────── */
+.group-heading { grid-column: 1 / -1; column-span: all; margin: .5rem 0 0; font-size: .8rem; font-weight: 600; color: var(--text-2); }
+.board-total { margin: -.75rem 0 1rem; font-size: .85rem; color: var(--text-2); }
 .grid-container { position: relative; }
 .entry-grid {
   display: grid;

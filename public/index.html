@@ -128,6 +128,16 @@
           </div>
         </details>
 
+        <details class="filter-dropdown fashion-only" id="filter-brand-dd">
+          <summary>
+            <span id="filter-brand-label">All Brands</span>
+            <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </summary>
+          <div class="filter-panel">
+            <div class="filter-check-list" id="filter-brand-list"></div>
+          </div>
+        </details>
+
         <details class="filter-dropdown" id="filter-tags-dd">
           <summary>
             <span data-fashion-text="Tags">Style Tags</span>
@@ -156,7 +166,7 @@
           </div>
         </details>
 
-        <details class="filter-dropdown ui-only" id="filter-color-dd">
+        <details class="filter-dropdown" id="filter-color-dd">
           <summary>
             <span id="filter-color-label">All Colors</span>
             <svg class="filter-caret" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 4l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -167,6 +177,7 @@
         </details>
 
         <button class="chip chip-fav" id="filter-fav" aria-pressed="false">♥ Favorites</button>
+        <button class="chip fashion-only" id="filter-bought" aria-pressed="false" title="Hide entries tagged &quot;bought&quot;">Hide bought</button>
         <button class="chip" id="filter-recent" aria-pressed="false" title="Entries you opened recently">Recent</button>
 
         <details class="filter-dropdown" id="filter-sort-dd">
@@ -245,6 +256,7 @@
           <button class="btn-sm btn-danger" id="delete-board-btn">Delete Board</button>
         </div>
       </div>
+      <div class="board-total fashion-only" id="board-total"></div>
       <div class="board-drop-targets" id="board-drop-targets" style="display:none"></div>
       <div class="entry-grid" id="board-entry-grid"></div>
       <div class="empty-state" id="board-empty" style="display:none">
