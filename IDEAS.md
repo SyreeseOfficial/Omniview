@@ -56,10 +56,7 @@ All items from this section are under **Completed** or **Skipped** at the bottom
 
 ## 12. Code, tests & dev experience
 
-- [ ] **[H]** Unit tests for `public/js/autofill.js`. It is pure (no DOM), `node --test` can import it, and it has no tests (`test/` only has `api.test.js`). Cases: brand known-vs-page, per-host prior brand, "Red Wing" scrubbing, `shirt jacket` ambiguity, `EUR 120` currency.
 - [ ] **[M]** Fixture-based tests for `pageInfo` against realistic shop markup: Shopify, WooCommerce, Squarespace, `AggregateOffer`, `offers` as array, `priceSpecification` arrays, `hasVariant`. Autofill is the most fragile piece and the most used.
-- [ ] **[M]** Collapse the three near-identical tags/types/found-via route groups (`server.js:752-892`, ~140 lines) into one `managedList(path, key, onRename, onDelete)` registration.
-- [ ] **[M]** Split `server.js` (1,009 lines) into modules, mirroring the client: `store.js` (spaces, load/save/backup), `images.js`, `unfurl.js`, `routes/*.js`. The test suite makes it a safe refactor.
 - [ ] **[M]** `// @ts-check` + JSDoc `@typedef Entry` and a `tsc --noEmit` script: type safety without a build step, and catches the `entry.palette` / `style_tags` shape drift that `normalizeEntry` guards by hand.
 - [ ] **[M]** Serve shared constants from the server: `MAX_SCREENSHOTS` is duplicated in `entry.js:11` with a "keep in step" comment. A tiny `/api/config` (limits, space defaults) removes the drift risk.
 - [ ] **[L]** `engines: { node: ">=20" }` in `package.json` (code uses `Object.hasOwn`, `AbortSignal.timeout`, `??=`); fail early with a clear message on old Node.
@@ -148,7 +145,6 @@ Found by reading the code and counting what the two real libraries actually use 
 
 ### Browse, search and the wishlist
 
-- [ ] **[M]** Sort "Least recently opened" and a filter chip "Never opened". `visited_at` is stored but nothing reads it except the card badge.
 - [ ] **[L]** Sort "Recently edited" now that `updated_at` exists (FINDINGS asked for it only after that field landed).
 - [ ] **[M]** Filter and Group by **shop** (hostname). 23 of 30 fashion entries come from two hosts; "everything from Barbour" is the natural question and brand is only a guess at it.
 - [ ] **[L]** Sort by brand A to Z in Fashion.
@@ -157,16 +153,11 @@ Found by reading the code and counting what the two real libraries actually use 
 - [ ] **[M]** Bulk set **brand**, **colour** and **found via**. Bulk can only tag, untag, set type, board, favourite; a wrong brand guess repeats across a whole shop.
 - [ ] **[M]** Brand rename/merge. Brand is free text with autofill suggestions, so `Bronson Mfg.` / `Bronson MFG` variants can still appear; Tags, Types and Found via have merge UI, Brand has none. Inline in the brand filter dropdown is enough.
 - [ ] **[M]** Empty result: say which filter is to blame and what dropping it gives ("Remove Shoes → 8 results"). The chips and facet counts already have the numbers.
-- [ ] **[M]** Arrow-key movement inside the grid (roving tabindex). Cards are `tabIndex=0` and Enter opens them, but 30 to 300 tab stops is a lot; Tab should enter the grid once and arrows should move.
 - [ ] **[L]** "New" dot on entries added since you last opened the app (store one timestamp in `localStorage`).
 - [ ] **[L]** Group headings: collapsible, with a subtotal in Fashion ("Dr. Martens · 2 · $270").
-- [ ] **[L]** Wishlist review: a filter "Added over 6 months ago, not bought" with bulk delete. Wishlists rot the way inspiration libraries do.
 - [ ] **[M]** After Refresh price, mark the card "▼ $20" when the price fell and add a bulk "Refresh prices of the visible list" that runs one at a time with a delay. Still manual (the "no background tracking" decision stands), but you stop opening 15 entries one by one.
-- [ ] **[L]** Per-board budget: set an amount, show "$340 of $500" next to the running total (outfits, gift lists).
-- [ ] **[L]** Price operators in the search box (`price<200`, `under 200`) alongside the `tag:`/`type:` operators already in FINDINGS. Cheaper than a dedicated price filter UI.
 - [ ] **[L]** Fuzzy search fallback: if an exact search finds nothing, retry with edit distance 1 on title and brand (`barbor` finds Barbour).
 - [ ] **[L]** Restore scroll position per library when switching with `G` (switching currently re-renders from the top).
-- [ ] **[L]** Fashion CSV export (name, brand, price, url, type) for a spreadsheet. Parked Markdown copy covers pasting; CSV covers sorting by price in Sheets.
 
 ### Detail view and boards
 
@@ -174,15 +165,10 @@ Found by reading the code and counting what the two real libraries actually use 
 - [ ] **[L]** Autosave an unsaved detail note to `localStorage` the way the Add form saves drafts; the dirty guard only warns.
 - [ ] **[L]** Set `document.title` per view and open entry ("Omniview · Boards", "Wool overcoat · Omniview") so tab switchers and browser history are readable.
 - [ ] **[L]** Triage mode for untagged entries: one large screenshot at a time, tag chips on number keys, Space for next. Pairs with the parked "Needs attention" filter.
-- [ ] **[L]** Suggest tags from host history in the UI space ("entries from dribbble.com usually get Playful, Clean"), the same per-host idea as `guessBrand`. Fashion has no tags, so UI only.
-- [ ] **[?]** Inbox folder: watch a screenshots directory (e.g. `~/Pictures`) and create "needs details" UI entries from new files. Decide if this beats the parked `omniview shot` keybind.
 
 ### Data safety and privacy
 
-- [ ] **[H]** Favicons are hot-linked. `faviconImg` sets `img.src` to each shop's own icon URL, so every time Browse renders, your browser contacts every shop on your wishlist. That contradicts "Local only". Download the favicon once on save (32px, via `sharp`, into `uploads/favicons/`) and serve it locally, or drop favicons (see section 19).
 - [ ] **[M]** Persist an image hash on the entry when a screenshot is attached. `findDuplicateImage` reads and SHA-256s every screenshot in both libraries on the first upload after each restart (39 MB now, grows with the library).
-- [ ] **[M]** `npm run backup`: one script that writes `db/*.json` plus `uploads/` (without `thumbs/`) to a dated tar in a folder you choose. The daily rotation protects the JSON only; uploads are in no backup (FINDINGS has the trash side of this).
-- [ ] **[L]** `scripts/usage.js` that prints how many entries use each field (note, tags, boards, pinned, visited, several screenshots, brand, price). The cut list in section 19 came from a one-off of this; keep it to decide with data next time.
 - [ ] **[L]** Hide the heartbeat's silence: `setInterval(... api.get('/api/health').catch(() => {}))` swallows connection errors, so a stopped server shows nothing until the next click. If the poll stays, show "Omniview stopped. Retry" when it fails (otherwise remove it, section 19).
 
 ### Tests and tooling
@@ -214,8 +200,6 @@ Less is more. Each line says what goes, what it costs to keep, and the evidence.
 
 ### Delete first (no loss)
 
-- [ ] **[H]** `uuid` dependency: `crypto.randomUUID()` does the same and `server.js` already requires `crypto`. Two call sites, one fewer package.
-- [ ] **[H]** `compression` dependency and middleware. The server only listens on `127.0.0.1`; gzip over loopback costs CPU and saves nothing.
 - [ ] **[M]** `<link rel="modulepreload">` ×11 in `index.html`. Loopback latency is under 5 ms and the list is already stale (`stats.js` is missing).
 - [ ] **[L]** `db/library.json.bak` and the `db/*.bak` line in `.gitignore`: nothing writes `.bak` files any more.
 - [ ] **[M]** The derived `screenshot` field ("kept for older clients and exports"). There are no older clients. It is mirrored from `screenshots[0]` in `normalizeEntry` and used about 18 times; read `screenshots[0]` instead, drop it from the file and the export.
@@ -231,11 +215,8 @@ Less is more. Each line says what goes, what it costs to keep, and the evidence.
 - [ ] **[M]** "Both libraries" toggle (`filter-both`, `renderAlso`, `alsoCache`, `.also-section`). The two libraries share no vocabulary (websites vs jackets), and the design record says "never shown together".
 - [ ] **[M]** Pin (card button, detail button, sort rule, `pinned` field, export). Favourite already means "important" and 0 of 60 entries are pinned. Two flags for one idea.
 - [ ] **[L]** "Recent" chip, `omniview-recent` storage and `recordRecent`. Newest sort covers 30 entries, and "recent" is a third meaning of "seen" next to `visited_at` and `updated_at`.
-- [ ] **[L]** Random button and the `R` key, if neither is used in a month. At 30 entries the grid is the shuffle.
-- [ ] **[L]** The `visited_at` badge and `/api/visit` if "Open all links" is not used on a board. 0 of 60 entries have it today.
 - [ ] **[L]** `/api/optimize` and its button after one more run: the library is already optimised and new uploads are size-capped by the 50 MB limit only. Keep it as `scripts/optimize.js`, out of the server and Settings.
 - [ ] **[L]** "Check unused files" button: do the sweep at startup (log the count) and remove the button, the Storage section's three paragraphs and the extra confirm dialog. Orphans only come from interrupted uploads.
-- [ ] **[L]** Board decoration: colour dot *and* emoji *and* pin-to-sidebar *and* description *and* manual order. None of the 3 boards uses any of them. Keep emoji and manual order; cut colour and pin first.
 - [ ] **[L]** Contrast badge (`contrastRatio`, `contrastLevel`, the AA/AAA label and their tests). Interesting, but nothing in the workflow acts on it.
 - [ ] **[L]** "More like this" while the library is under ~50 entries: hide the section; with 30 entries it mostly returns whatever shares a type.
 - [ ] **[L]** `TAG_ALIASES` and `similarTag` (stemming and edit-distance for a near-duplicate warning). Keep `suggestTags` (one click, palette based); plain substring matching is enough for 27 tags.
@@ -378,6 +359,11 @@ Less is more. Each line says what goes, what it costs to keep, and the evidence.
 - [x] **[?]** "No price tracking": resolved by the manual Refresh price button above.
 - [x] **[?]** "No status field": a `bought` flag (detail → Status → Bought). "Hide bought" is on by default in Fashion and hides the flag and the old `bought` tag.
 - [x] **[?]** "Fashion ignores palette": the cover's first palette colour is now the card/row background while the thumbnail loads, in both libraries.
+- [x] **[H]** Unit tests for `public/js/autofill.js`. It is pure (no DOM), `node --test` can import it, and it has no tests (`test/` only has `api.test.js`). Cases: brand known-vs-page, per-host prior brand, "Red Wing" scrubbing, `shirt jacket` ambiguity, `EUR 120` currency.
+- [x] **[M]** Collapse the three near-identical tags/types/found-via route groups (`server.js:752-892`, ~140 lines) into one `managedList(path, key, onRename, onDelete)` registration.
+- [x] **[M]** Split `server.js` (1,009 lines) into modules, mirroring the client: `store.js` (spaces, load/save/backup), `images.js`, `unfurl.js`, `routes/*.js`. The test suite makes it a safe refactor.
+- [x] **[H]** `uuid` dependency: `crypto.randomUUID()` does the same and `server.js` already requires `crypto`. Two call sites, one fewer package.
+- [x] **[H]** `compression` dependency and middleware. The server only listens on `127.0.0.1`; gzip over loopback costs CPU and saves nothing.
 
 ## Skipped
 
@@ -457,3 +443,19 @@ Parked for now, not rejected.
 - [ ] **[M]** Entry cards keyboard-reachable: the biggest accessibility gap.
 - [ ] **[M]** Self-host fonts: keeps "local only" true and the app usable offline.
 - [ ] **[?]** "Never shown together." Still right for browsing; a cross-library search (section 3) is read-only and doesn't mix tags or boards.
+- [ ] **[M]** Sort "Least recently opened" and a filter chip "Never opened". `visited_at` is stored but nothing reads it except the card badge.
+- [ ] **[M]** Arrow-key movement inside the grid (roving tabindex). Cards are `tabIndex=0` and Enter opens them, but 30 to 300 tab stops is a lot; Tab should enter the grid once and arrows should move.
+- [ ] **[L]** Wishlist review: a filter "Added over 6 months ago, not bought" with bulk delete. Wishlists rot the way inspiration libraries do.
+- [ ] **[L]** Per-board budget: set an amount, show "$340 of $500" next to the running total (outfits, gift lists).
+- [ ] **[L]** Price operators in the search box (`price<200`, `under 200`) alongside the `tag:`/`type:` operators already in FINDINGS. Cheaper than a dedicated price filter UI.
+- [ ] **[L]** Fashion CSV export (name, brand, price, url, type) for a spreadsheet. Parked Markdown copy covers pasting; CSV covers sorting by price in Sheets.
+- [ ] **[L]** Suggest tags from host history in the UI space ("entries from dribbble.com usually get Playful, Clean"), the same per-host idea as `guessBrand`. Fashion has no tags, so UI only.
+- [ ] **[?]** Inbox folder: watch a screenshots directory (e.g. `~/Pictures`) and create "needs details" UI entries from new files. Decide if this beats the parked `omniview shot` keybind.
+- [ ] **[H]** Favicons are hot-linked. `faviconImg` sets `img.src` to each shop's own icon URL, so every time Browse renders, your browser contacts every shop on your wishlist. That contradicts "Local only". Download the favicon once on save (32px, via `sharp`, into `uploads/favicons/`) and serve it locally, or drop favicons (see section 19).
+- [ ] **[M]** `npm run backup`: one script that writes `db/*.json` plus `uploads/` (without `thumbs/`) to a dated tar in a folder you choose. The daily rotation protects the JSON only; uploads are in no backup (FINDINGS has the trash side of this).
+- [ ] **[L]** `scripts/usage.js` that prints how many entries use each field (note, tags, boards, pinned, visited, several screenshots, brand, price). The cut list in section 19 came from a one-off of this; keep it to decide with data next time.
+- [ ] **[L]** Random button and the `R` key, if neither is used in a month. At 30 entries the grid is the shuffle.
+- [ ] **[L]** The `visited_at` badge and `/api/visit` if "Open all links" is not used on a board. 0 of 60 entries have it today.
+- [ ] **[L]** Board decoration: colour dot *and* emoji *and* pin-to-sidebar *and* description *and* manual order. None of the 3 boards uses any of them. Keep emoji and manual order; cut colour and pin first.
+
+
